@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0f380f">
+<title>Good Vibes Arcade</title>
+<style>
+  :root{ --c0:#0f380f; --c1:#306230; --c2:#8bac0f; --c3:#9bbc0f; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; min-height:100%; }
+  body{
+    background:#0a140a; color:var(--c3);
+    font-family:"Courier New",monospace;
+    display:flex; flex-direction:column; align-items:center;
+    padding:24px 14px calc(40px + env(safe-area-inset-bottom));
+    min-height:100vh;
+  }
+  header{ text-align:center; margin-bottom:24px; }
+  .logo{
+    display:inline-block; background:var(--c0); border:4px solid var(--c1);
+    border-radius:14px; padding:14px 22px; box-shadow:0 6px 0 #050a05;
+  }
+  .logo h1{
+    margin:0; font-size:26px; letter-spacing:3px; color:var(--c3);
+    text-shadow:2px 2px 0 var(--c1);
+  }
+  .logo p{ margin:6px 0 0; font-size:11px; letter-spacing:4px; color:var(--c2); }
+  .grid{
+    width:100%; max-width:560px;
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(150px,1fr));
+    gap:16px;
+  }
+  .card{
+    background:var(--c0); border:3px solid var(--c1); border-radius:14px;
+    padding:14px; text-decoration:none; color:var(--c3);
+    display:flex; flex-direction:column; align-items:center; gap:10px;
+    box-shadow:0 5px 0 #050a05; transition:transform .08s, box-shadow .08s;
+  }
+  .card:active{ transform:translateY(4px); box-shadow:0 1px 0 #050a05; }
+  .card.soon{ opacity:.5; pointer-events:none; }
+  .icon{
+    width:96px; height:96px; image-rendering:pixelated;
+    background:var(--c3); border-radius:10px; border:2px solid var(--c1);
+  }
+  .card .name{ font-size:15px; font-weight:bold; letter-spacing:1px; }
+  .card .tag{ font-size:10px; letter-spacing:2px; color:var(--c2); }
+  footer{ margin-top:30px; font-size:10px; color:var(--c1); letter-spacing:2px; text-align:center; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="logo">
+      <h1>GOOD VIBES</h1>
+      <p>A R C A D E</p>
+    </div>
+  </header>
+
+  <main class="grid" id="grid">
+    <a class="card" href="donkey-kong.html">
+      <canvas class="icon" width="32" height="32" data-icon="dk"></canvas>
+      <span class="name">DONKEY KONG</span>
+      <span class="tag">CLIMB &middot; JUMP</span>
+    </a>
+
+    <div class="card soon">
+      <canvas class="icon" width="32" height="32" data-icon="soon"></canvas>
+      <span class="name">COMING SOON</span>
+      <span class="tag">NEW DROP</span>
+    </div>
+  </main>
+
+  <footer>INSERT COIN &middot; PLAYS GREAT ON PHONES</footer>
+
+<script>
+// Pixel-art icons drawn on tiny canvases, scaled up crisp.
+const PAL = ["#0f380f","#306230","#8bac0f","#9bbc0f"];
+function draw(cv, rows){
+  const x = cv.getContext("2d");
+  x.imageSmoothingEnabled = false;
+  for(let r=0;r<rows.length;r++){
+    const row = rows[r];
+    for(let c=0;c<row.length;c++){
+      const ch = row[c];
+      if(ch === ".") continue;
+      x.fillStyle = PAL[+ch];
+      x.fillRect(c, r, 1, 1);
+    }
+  }
+}
+
+// 32x32 Donkey Kong barrel + ape motif
+const DK = [
+"................................",
+"................................",
+".....1111111111111111111111.....",
+"....122222222222222222222221....",
+"...12200000000000000000000221...",
+"..1220033333333333333333300221..",
+"..1203300000033333300000033021..",
+"..1203300033330033330003330021..",
+"..1203303300330033003300330021..",
+"..1203303300330033003300330021..",
+"..1203300033330033330003330021..",
+"..1203300000033333300000033021..",
+"..1220033333333333333333300221..",
+"..1220033330000000000333300221..",
+"..1220330000033333300000330221..",
+"..1220300003322222233000030221..",
+"..1220300033222112223300030221..",
+"..1220300033211111123300030221..",
+"..1220300033222112223300030221..",
+"..1220300003322222233000030221..",
+"..1220330000033333300000330221..",
+"..1220033330000000000333300221..",
+"..1220033333333333333333300221..",
+"..1203300000033333300000033021..",
+"..1203303333330033003333330021..",
+"..1203303300330033003300330021..",
+"..1203303300330033003300330021..",
+"..1203300033333333333300330021..",
+"...12200000000000000000000221...",
+"....122222222222222222222221....",
+".....1111111111111111111111.....",
+"................................"
+];
+
+// simple "?" cabinet for coming soon
+const SOON = [
+"................................",
+"................................",
+"......11111111111111111111......",
+".....1000000000000000000001.....",
+".....1022222222222222222201.....",
+".....1022000000000000002201.....",
+".....1022033333333333302201.....",
+".....1022033000000033302201.....",
+".....1022033000000033302201.....",
+".....1022000000000033302201.....",
+".....1022000000000333002201.....",
+".....1022000000003330002201.....",
+".....1022000000033300002201.....",
+".....1022000000333000002201.....",
+".....1022000000330000002201.....",
+".....1022000000000000002201.....",
+".....1022000000000000002201.....",
+".....1022000000330000002201.....",
+".....1022000000330000002201.....",
+".....1022000000000000002201.....",
+".....1022222222222222222201.....",
+".....1000000000000000000001.....",
+"......11111111111111111111......",
+"................................",
+"................................",
+"..1111..1111..1111..1111..11....",
+"................................",
+"................................",
+"................................",
+"................................",
+"................................",
+"................................"
+];
+
+document.querySelectorAll("canvas[data-icon]").forEach(cv=>{
+  draw(cv, cv.dataset.icon === "dk" ? DK : SOON);
+});
+</script>
+</body>
+</html>

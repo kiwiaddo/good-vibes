@@ -19,7 +19,7 @@
     padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
   }
   #shell{
-    width:min(100vw, 460px);
+    width:min(100vw, 480px);
     display:flex; flex-direction:column; gap:8px;
     padding:8px;
   }
@@ -32,21 +32,21 @@
   .chip{
     background:var(--c0); color:var(--c3); border:2px solid var(--c1);
     border-radius:6px; padding:4px 8px; font-weight:bold; font-size:12px;
-    cursor:pointer;
+    cursor:pointer; min-width:78px;
   }
   .chip:active{ background:var(--c1); }
   #screen{
     position:relative;
     background:#081208;
     border:4px solid var(--c0);
-    border-radius:10px;
+    border-radius:12px;
     padding:6px;
     box-shadow:0 6px 0 #050a05, inset 0 0 0 2px var(--c1);
   }
   canvas{
     display:block; width:100%; height:auto;
     image-rendering:pixelated; image-rendering:crisp-edges;
-    border-radius:4px;
+    border-radius:5px;
   }
   #controls{
     display:flex; align-items:center; justify-content:space-between;
@@ -54,8 +54,8 @@
   }
   #dpad{
     display:grid;
-    grid-template-columns:repeat(3,48px);
-    grid-template-rows:repeat(3,48px);
+    grid-template-columns:repeat(3,50px);
+    grid-template-rows:repeat(3,50px);
     gap:4px;
   }
   .btn{
@@ -69,7 +69,7 @@
   #dpad .e{ background:transparent; border:none; }
   #up{ grid-area:1/2; } #left{ grid-area:2/1; } #right{ grid-area:2/3; } #down{ grid-area:3/2; }
   #jump{
-    width:104px; height:104px; border-radius:50%;
+    width:108px; height:108px; border-radius:50%;
     background:#b13e7a; color:#fff; border-bottom:6px solid #6e244a;
     font-size:20px; letter-spacing:1px;
   }
@@ -83,12 +83,12 @@
       <a href="index.html">&#9664; ARCADE</a>
       <span style="color:var(--c1);font-size:11px;">DONKEY KONG</span>
       <span>
-        <button class="chip" id="palBtn">PALETTE</button>
+        <button class="chip" id="palBtn">GB GREEN</button>
         <button class="chip" id="muteBtn">SOUND</button>
       </span>
     </div>
     <div id="screen">
-      <canvas id="game" width="160" height="144"></canvas>
+      <canvas id="game" width="320" height="288"></canvas>
     </div>
     <div id="controls">
       <div id="dpad">
@@ -100,30 +100,68 @@
       </div>
       <button class="btn" id="jump">JUMP</button>
     </div>
-    <div id="hint">Climb the ladders &middot; leap the barrels &middot; rescue the princess</div>
+    <div id="hint">Climb the ladders &middot; leap the barrels &middot; rescue Pauline</div>
   </div>
 
 <script>
 (function(){
 "use strict";
 
-// ---------- Canvas ----------
-const W = 160, H = 144;
+// ---------- Canvas (2x Game Boy resolution) ----------
+const S = 2;                 // world scale over the 160x144 GB grid
+const W = 160*S, H = 144*S;  // 320 x 288
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 ctx.imageSmoothingEnabled = false;
 
-// ---------- Palette ----------
-const PALETTES = {
+// ---------- Palettes ----------
+// Sprites are authored with single-char colour KEYS. Each palette resolves a
+// key to a hex colour. The two Game Boy (DMG) palettes collapse every key onto
+// a 4-shade ramp; Game Boy Color maps keys to real hues.
+const TONES = {
   green: ["#0f380f","#306230","#8bac0f","#9bbc0f"],
   gray:  ["#0b0b0b","#4a4a4a","#a6a6a6","#eaeaea"]
 };
-let palName = localStorage.getItem("dk_pal") || "green";
-let PAL = PALETTES[palName];
+// key -> tone index (0 darkest .. 3 lightest) for the DMG palettes
+const KEY_TONE = {
+  ".":-1,"k":0,"K":0,"0":0,"1":1,"2":2,"3":3,
+  "n":1,"N":0,"s":2,"h":0,
+  "f":2,"F":3,"e":1,
+  "b":1,"B":0,"r":0,"R":0,
+  "o":1,"O":0,"i":2,
+  "p":1,"P":0,"y":3,
+  "l":2,"m":1,"d":0,"w":3,
+  "g":1,"G":0,"a":1,"A":0
+};
+// key -> hex for Game Boy Color
+const GBC = {
+  "k":"#140d06","K":"#000000","0":"#1b1b1b","1":"#4f4f4f","2":"#a6a6a6","3":"#ededed",
+  "n":"#9c571c","N":"#5d3310","s":"#f1c08a","h":"#6b3410",
+  "f":"#ff7a18","F":"#ffd23f","e":"#d11f1f",
+  "b":"#2552c8","B":"#13265f","r":"#d62b2b","R":"#8c1414",
+  "o":"#c4862c","O":"#6f4214","i":"#cfd2d6",
+  "p":"#e84f9a","P":"#9c1f5e","y":"#ffd23f",
+  "l":"#ecd9ad","m":"#8a8a8a","d":"#222222","w":"#ffffff",
+  "g":"#e23b6d","G":"#7a1030","a":"#46c8e6","A":"#1c7d9c"
+};
+const PAL_ORDER = ["green","gray","color"];
+const PAL_LABEL = { green:"GB GREEN", gray:"GB GRAY", color:"GB COLOR" };
+let palMode = localStorage.getItem("dk_pal3") || "green";
+if(PAL_ORDER.indexOf(palMode) < 0) palMode = "green";
+
+function col(key){
+  if(palMode === "color") return GBC[key] || "#ff00ff";
+  const t = KEY_TONE[key]; return TONES[palMode][t === undefined ? 0 : t];
+}
+function bgcol(){ return palMode === "color" ? "#0a0a18" : TONES[palMode][3]; }
 
 // ---------- Draw helpers ----------
-function clear(i){ ctx.fillStyle = PAL[i]; ctx.fillRect(0,0,W,H); }
-function rect(x,y,w,h,i){ ctx.fillStyle = PAL[i]; ctx.fillRect(x|0,y|0,w,h); }
+function clearbg(){ ctx.fillStyle = bgcol(); ctx.fillRect(0,0,W,H); }
+function rect(x,y,w,h,key){
+  if(key === "." ) return;
+  ctx.fillStyle = col(key);
+  ctx.fillRect(x|0, y|0, Math.ceil(w), Math.ceil(h));
+}
 
 // 3x5 pixel font
 const FONT = {
@@ -137,264 +175,182 @@ const FONT = {
   "Z":[7,1,2,4,7]," ":[0,0,0,0,0],"-":[0,0,7,0,0],".":[0,0,0,0,2],"!":[2,2,2,0,2],
   ":":[0,2,0,2,0],"+":[0,2,7,2,0]
 };
-function text(s, x, y, c, sc){
-  sc = sc || 1; let cx = x;
-  s = (""+s).toUpperCase();
+function text(s, x, y, key, sc){
+  sc = sc || 2; let cx = x; s = (""+s).toUpperCase();
   for(let n=0;n<s.length;n++){
     const g = FONT[s[n]] || FONT[" "];
     for(let r=0;r<5;r++){ const b=g[r];
-      for(let col=0;col<3;col++){ if(b & (4>>col)) rect(cx+col*sc, y+r*sc, sc, sc, c); }
+      for(let c=0;c<3;c++){ if(b & (4>>c)) rect(cx+c*sc, y+r*sc, sc, sc, key); }
     }
     cx += 4*sc;
   }
 }
-function textC(s, y, c, sc){ // centered
-  sc = sc || 1;
-  const w = (""+s).length*4*sc - sc;
-  text(s, (W - w)/2 | 0, y, c, sc);
-}
+function textC(s, y, key, sc){ sc = sc||2; const w=(""+s).length*4*sc - sc; text(s,(W-w)/2|0,y,key,sc); }
 
-// sprite from rows of chars; '.' transparent, digits = palette index
-function sprite(rows, x, y, flip){
-  for(let r=0;r<rows.length;r++){
-    const row = rows[r];
-    for(let cN=0;cN<row.length;cN++){
-      const ch = row[cN];
-      if(ch === ".") continue;
-      const col = flip ? (row.length-1-cN) : cN;
-      rect(x+col, y+r, 1, 1, +ch);
-    }
+// ---------- Sprites (procedural, drawn in world pixels) ----------
+function drawJumpman(x, y, face, frame, climbing){
+  const sw = (frame>>3)&1;       // stride
+  if(climbing){
+    // back view, hands climbing
+    rect(x+4,y,8,3,'r'); rect(x+3,y+3,10,2,'r');      // cap
+    rect(x+4,y+5,8,5,'h');                             // back of head
+    rect(x+3,y+10,10,7,'b');                           // shirt
+    rect(x+3,y+17,10,4,'r');                           // overalls
+    rect(x+1,y+(sw?6:10),3,6,'b'); rect(x+12,y+(sw?10:6),3,6,'b'); // arms
+    rect(x+1,y+(sw?12:16),3,2,'s'); rect(x+12,y+(sw?16:12),3,2,'s');
+    rect(x+3,y+21,4,3,'N'); rect(x+9,y+21,4,3,'N');    // shoes
+    return;
   }
+  const fx = face<0;             // facing left -> mirror eye/nose
+  rect(x+4,y,9,3,'r'); rect(x+3,y+3,11,2,'r');         // cap
+  rect(x+3,y+5,2,5,'h');                               // hair
+  rect(x+5,y+5,7,5,'s');                               // face
+  rect(fx? x+5 : x+9, y+6, 2,2,'k');                   // eye
+  rect(fx? x+3 : x+11, y+7, 2,3,'s');                  // nose
+  rect(x+5,y+9,8,2,'s');                               // jaw
+  rect(x+3,y+11,10,5,'b');                             // shirt
+  rect(x+1,y+11,2,5,'b'); rect(x+13,y+11,2,5,'b');     // sleeves
+  rect(x+1,y+15,2,2,'s'); rect(x+13,y+15,2,2,'s');     // hands
+  rect(x+3,y+16,10,4,'r');                             // overalls
+  rect(x+5,y+12,1,5,'r'); rect(x+10,y+12,1,5,'r');     // suspenders
+  rect(x+6,y+17,1,1,'y'); rect(x+9,y+17,1,1,'y');      // buttons
+  // legs / shoes (walk cycle)
+  if(sw){ rect(x+2,y+20,4,2,'b'); rect(x+10,y+20,4,2,'b');
+          rect(x+1,y+22,5,2,'N'); rect(x+10,y+22,5,2,'N'); }
+  else  { rect(x+4,y+20,3,2,'b'); rect(x+9,y+20,3,2,'b');
+          rect(x+3,y+22,5,2,'N'); rect(x+8,y+22,5,2,'N'); }
 }
 
-const SPR_PLAYER = [
-  "..0000..",
-  ".000000.",
-  "..2222..",
-  "..2002..",
-  "..2222..",
-  ".002200.",
-  "00022000",
-  "00022000",
-  ".002200.",
-  "..2..2..",
-  "..0..0..",
-  ".00..00."
-];
-const SPR_PLAYER_CLIMB = [
-  "..0000..",
-  ".000000.",
-  "..2222..",
-  "..2222..",
-  "0.2222.0",
-  "0.0220.0",
-  ".002200.",
-  ".002200.",
-  ".002200.",
-  ".00..00.",
-  ".0....0.",
-  "0......0"
-];
-const SPR_BARREL = [
-  ".000000.",
-  "00222200",
-  "02022020",
-  "02022020",
-  "00222200",
-  ".000000."
-];
-const SPR_FLAME_A = [
-  "...00...",
-  "..0220..",
-  ".022320.",
-  "02233220",
-  "02333320",
-  "02333320",
-  ".023320.",
-  "..0220.."
-];
-const SPR_FLAME_B = [
-  "...00...",
-  "..0220..",
-  ".002200.",
-  ".023320.",
-  "02233220",
-  "02333320",
-  ".023320.",
-  "..0220.."
-];
+function drawBarrel(x, y){
+  rect(x+2,y,12,12,'O');          // body outline
+  rect(x+3,y+1,10,10,'o');        // wood
+  rect(x,y+3,16,6,'O');           // bulge outline
+  rect(x+1,y+4,14,4,'o');         // bulge wood
+  rect(x+4,y,2,12,'i'); rect(x+10,y,2,12,'i');   // iron hoops
+  rect(x+7,y+1,1,10,'O');         // centre stave
+  rect(x+1,y+5,14,1,'i');         // mid hoop glint
+}
+
+function drawFlame(x, y, frame){
+  const w = (frame>>2)&1;
+  rect(x+4,y+12,9,4,'e');                         // ember base
+  rect(x+3,y+7,11,7,'f');
+  rect(x+5,y+3,6,6,'F');
+  rect(x+ (w?6:4), y, 4,5,'f');                    // flickering tip
+  rect(x+ (w?4:9), y+2, 3,4,'F');
+  rect(x+7,y+5,2,4,'e');
+}
 
 function drawKong(x, y, raise){
-  // body
-  rect(x+2, y+6, 18, 12, 0);
-  rect(x, y+8, 22, 7, 0);
-  // chest
-  rect(x+6, y+9, 10, 6, 1);
-  rect(x+8, y+10, 6, 3, 2);
-  // head
-  rect(x+5, y, 12, 8, 0);
-  rect(x+7, y+2, 8, 4, 1);   // face
-  rect(x+8, y+3, 2, 2, 0);   // eye
-  rect(x+12, y+3, 2, 2, 0);  // eye
-  rect(x+9, y+5, 4, 1, 0);   // mouth
-  // ears
-  rect(x+4, y+1, 2, 3, 0);
-  rect(x+16, y+1, 2, 3, 0);
-  // arms
+  // ---- body ----
+  rect(x+4,y+15,36,10,'n');             // shoulders
+  rect(x+8,y+14,28,18,'n');             // torso
+  rect(x+13,y+18,18,12,'l');            // chest patch
+  rect(x+16,y+20,12,8,'s');             // inner chest
+  rect(x+14,y+28,16,3,'N');             // belly shade
+  // ---- head ----
+  rect(x+10,y,24,16,'n');
+  rect(x+8,y+2,2,4,'N'); rect(x+34,y+2,2,4,'N');     // ears
+  rect(x+12,y+4,20,3,'N');                            // heavy brow
+  rect(x+12,y+6,5,1,'N'); rect(x+27,y+6,5,1,'N');     // angry slant
+  rect(x+14,y+7,6,4,'w'); rect(x+24,y+7,6,4,'w');     // eye whites
+  rect(x+16,y+8,2,2,'k'); rect(x+26,y+8,2,2,'k');     // pupils
+  rect(x+13,y+11,18,5,'s');                           // muzzle
+  rect(x+17,y+12,2,2,'N'); rect(x+25,y+12,2,2,'N');   // nostrils
+  rect(x+14,y+14,16,2,'w');                           // teeth
+  rect(x+14,y+14,16,1,'k');                           // lip line
+  for(let i=14;i<30;i+=3) rect(x+i,y+14,1,2,'k');     // tooth gaps
+  // ---- arms ----
+  rect(x,y+16,8,15,'n'); rect(x,y+29,8,4,'N');        // left arm + fist
   if(raise){
-    rect(x-3, y+1, 5, 5, 0);  // raised throwing arm
-    rect(x+20, y+9, 4, 6, 0);
+    rect(x+36,y+2,8,15,'n'); rect(x+36,y,8,4,'N');    // raised right arm
+    drawBarrel(x+33, y-12);                            // barrel in fist
   } else {
-    rect(x-3, y+9, 5, 6, 0);
-    rect(x+20, y+9, 4, 6, 0);
+    rect(x+36,y+16,8,15,'n'); rect(x+36,y+29,8,4,'N');
   }
-  // legs
-  rect(x+3, y+17, 5, 3, 0);
-  rect(x+14, y+17, 5, 3, 0);
+  // ---- legs ----
+  rect(x+10,y+30,10,9,'n'); rect(x+24,y+30,10,9,'n');
+  rect(x+8,y+37,12,3,'N'); rect(x+24,y+37,12,3,'N');  // feet
 }
 
-function drawPrincess(x, y, blink){
-  rect(x+2, y, 5, 4, 2);     // hair
-  rect(x+3, y+1, 3, 2, 0);   // face
-  rect(x+3, y+4, 3, 1, 0);
-  // dress (triangle)
-  rect(x+3, y+5, 3, 2, 1);
-  rect(x+2, y+7, 5, 2, 1);
-  rect(x+1, y+9, 7, 2, 1);
-  rect(x+2, y+8, 5, 1, 2);
-  if(blink){ rect(x+1, y-2, 1,1, 3); rect(x+7, y-1, 1,1, 3); } // sparkle/HELP
+function drawPrincess(x, y, sos){
+  rect(x+4,y,8,5,'y'); rect(x+3,y+2,2,6,'y'); rect(x+11,y+2,2,6,'y'); // hair
+  rect(x+5,y+4,6,5,'s');                               // face
+  rect(x+6,y+5,1,1,'k'); rect(x+9,y+5,1,1,'k');        // eyes
+  rect(x+7,y+7,3,1,'P');                               // lips
+  rect(x+1,y+9,3,6,'s'); rect(x+12,y+9,3,6,'s');       // arms
+  rect(x+5,y+9,6,3,'p');                               // bodice
+  rect(x+4,y+12,8,3,'p'); rect(x+2,y+15,12,4,'p'); rect(x+1,y+19,14,5,'p'); // dress
+  rect(x+5,y+13,6,9,'P');                              // dress shade
+  if(sos){ rect(x+2,y-12,18,9,'k'); text("HELP",x+3,y-10,'w',1); }
 }
 
-function drawPlatform(p){
-  rect(p.x, p.y, p.w, 3, 1);
-  rect(p.x, p.y, p.w, 1, 2);
-  for(let i=2;i<p.w-1;i+=6){ rect(p.x+i, p.y+1, 1, 1, 0); } // rivets
+function drawGirder(p){
+  rect(p.x,p.y,p.w,6,'g');
+  rect(p.x,p.y,p.w,2,'l');                             // top highlight
+  rect(p.x,p.y+5,p.w,1,'G');                           // bottom shade
+  for(let i=4;i<p.w-2;i+=14) rect(p.x+i,p.y+2,2,2,'G');// rivets
 }
 function drawLadder(l){
-  const x = l.x;
-  for(let y=l.yTop; y<l.yBottom; y++){
-    rect(x-2, y, 1, 1, 1);
-    rect(x+1, y, 1, 1, 1);
-  }
-  for(let y=l.yTop+1; y<l.yBottom; y+=4){
-    rect(x-2, y, 4, 1, 2);
-  }
+  const h = l.yBottom - l.yTop;
+  rect(l.x-6,l.yTop,2,h,'a'); rect(l.x+4,l.yTop,2,h,'a');   // rails
+  for(let y=l.yTop+2; y<l.yBottom-1; y+=7) rect(l.x-6,y,12,2,'A'); // rungs
+}
+function drawDrum(x, y, frame){
+  rect(x,y,18,22,'O'); rect(x+1,y+1,16,20,'o');
+  rect(x,y+5,18,2,'i'); rect(x,y+12,18,2,'i'); rect(x,y+18,18,2,'i');
+  rect(x+5,y+8,8,6,'F'); text("OIL",x+3,y+9,'k',1);
+  drawFlame(x+1, y-14, frame); drawFlame(x+8, y-13, frame+5);
 }
 
-// ---------- Audio ----------
-let muted = localStorage.getItem("dk_mute") === "1";
-let actx = null;
-function audioInit(){ if(!actx){ try{ actx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } }
-function beep(freq, dur, type){
-  if(muted || !actx) return;
-  const o = actx.createOscillator(), g = actx.createGain();
-  o.type = type || "square"; o.frequency.value = freq;
-  g.gain.value = 0.06;
-  o.connect(g); g.connect(actx.destination);
-  const t = actx.currentTime;
-  o.start(t);
-  g.gain.setValueAtTime(0.06, t);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.stop(t + dur);
-}
-function sJump(){ beep(660, 0.12); setTimeout(()=>beep(880,0.10),60); }
-function sStep(){ beep(180, 0.04); }
-function sDie(){ beep(300,0.15,"sawtooth"); setTimeout(()=>beep(160,0.25,"sawtooth"),120); setTimeout(()=>beep(90,0.4,"sawtooth"),300); }
-function sWin(){ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>beep(f,0.18),i*120)); }
-function sScore(){ beep(1200,0.06); }
-function sBarrel(){ beep(120,0.05,"triangle"); }
-
-// ---------- Levels ----------
+// ---------- Levels (authored in 160x144 grid, scaled by S on load) ----------
 const LEVELS = [
   {
-    platforms:[
-      {x:0,y:134,w:160},
-      {x:36,y:114,w:124},
-      {x:0,y:92,w:124},
-      {x:36,y:70,w:124},
-      {x:0,y:48,w:108}
-    ],
-    ladders:[
-      {x:132,yTop:114,yBottom:134},
-      {x:60,yTop:92,yBottom:114},
-      {x:100,yTop:70,yBottom:92},
-      {x:72,yTop:48,yBottom:70}
-    ],
-    kong:{x:12,y:30}, kongThrowDir:1,
-    princess:{x:80,y:36},
-    start:{x:8,y:122},
+    platforms:[{x:0,y:134,w:160},{x:36,y:114,w:124},{x:0,y:92,w:124},{x:36,y:70,w:124},{x:0,y:48,w:108}],
+    ladders:[{x:132,yTop:114,yBottom:134},{x:60,yTop:92,yBottom:114},{x:100,yTop:70,yBottom:92},{x:72,yTop:48,yBottom:70}],
+    kong:{x:12,y:26}, kongThrowDir:1, princess:{x:84,y:34}, start:{x:8,y:122},
     diff:{interval:120, speed:0.55, ladderChance:0.010, flames:0}
   },
   {
-    platforms:[
-      {x:0,y:134,w:160},
-      {x:0,y:114,w:124},
-      {x:36,y:92,w:124},
-      {x:0,y:70,w:124},
-      {x:52,y:48,w:108}
-    ],
-    ladders:[
-      {x:24,yTop:114,yBottom:134},
-      {x:100,yTop:92,yBottom:114},
-      {x:30,yTop:70,yBottom:92},
-      {x:96,yTop:48,yBottom:70}
-    ],
-    kong:{x:130,y:30}, kongThrowDir:-1,
-    princess:{x:66,y:36},
-    start:{x:150,y:122},
+    platforms:[{x:0,y:134,w:160},{x:0,y:114,w:124},{x:36,y:92,w:124},{x:0,y:70,w:124},{x:52,y:48,w:108}],
+    ladders:[{x:24,yTop:114,yBottom:134},{x:100,yTop:92,yBottom:114},{x:30,yTop:70,yBottom:92},{x:96,yTop:48,yBottom:70}],
+    kong:{x:122,y:26}, kongThrowDir:-1, princess:{x:64,y:34}, start:{x:150,y:122},
     diff:{interval:95, speed:0.66, ladderChance:0.020, flames:0}
   },
   {
-    platforms:[
-      {x:0,y:134,w:160},
-      {x:36,y:114,w:124},
-      {x:0,y:92,w:124},
-      {x:36,y:70,w:124},
-      {x:0,y:48,w:108}
-    ],
-    ladders:[
-      {x:132,yTop:114,yBottom:134},
-      {x:60,yTop:92,yBottom:114},
-      {x:100,yTop:70,yBottom:92},
-      {x:72,yTop:48,yBottom:70},
-      {x:20,yTop:70,yBottom:92}
-    ],
-    kong:{x:12,y:30}, kongThrowDir:1,
-    princess:{x:80,y:36},
-    start:{x:8,y:122},
-    diff:{interval:78, speed:0.75, ladderChance:0.028, flames:1}
+    platforms:[{x:0,y:134,w:160},{x:36,y:114,w:124},{x:0,y:92,w:124},{x:36,y:70,w:124},{x:0,y:48,w:108}],
+    ladders:[{x:132,yTop:114,yBottom:134},{x:60,yTop:92,yBottom:114},{x:100,yTop:70,yBottom:92},{x:72,yTop:48,yBottom:70},{x:20,yTop:70,yBottom:92}],
+    kong:{x:12,y:26}, kongThrowDir:1, princess:{x:84,y:34}, start:{x:8,y:122},
+    diff:{interval:80, speed:0.74, ladderChance:0.026, flames:1}
   }
 ];
 
-// ---------- Physics constants ----------
-const GRAV = 0.22, WALK = 0.75, JUMP = -3.0, CLIMB = 0.62, MAXFALL = 3.4;
+// ---------- Physics (world units) ----------
+const GRAV=0.44, WALK=1.5, JUMP=-6.0, CLIMB=1.25, MAXFALL=6.8;
 
-// ---------- Game state ----------
-let state = "title";       // title, play, clear, win, dead, over
-let levelIdx = 0;
-let score = 0, lives = 3, hiscore = +(localStorage.getItem("dk_hi")||0);
-let stateTimer = 0;
-let bonus = 5000;
-let cur = null;            // current level
-let player, barrels, flames, kongTimer, kongRaise, scoredBarrels;
+// ---------- State ----------
+let state="title", levelIdx=0, score=0, lives=3, stateTimer=0, bonus=5000;
+let hiscore = +(localStorage.getItem("dk_hi")||0);
+let cur=null, player, barrels, flames, kongTimer, kongRaise;
 
 function loadLevel(idx){
-  cur = LEVELS[idx];
-  player = { x:cur.start.x, y:cur.start.y, w:8, h:12, vx:0, vy:0,
-             onGround:false, climbing:false, face:1, anim:0, alive:true };
+  const L = LEVELS[idx];
+  cur = {
+    platforms: L.platforms.map(p=>({x:p.x*S,y:p.y*S,w:p.w*S})),
+    ladders: L.ladders.map(l=>({x:l.x*S,yTop:l.yTop*S,yBottom:l.yBottom*S})),
+    kong:{x:L.kong.x*S,y:L.kong.y*S}, kongThrowDir:L.kongThrowDir,
+    princess:{x:L.princess.x*S,y:L.princess.y*S},
+    diff:{interval:L.diff.interval, speed:L.diff.speed*S, ladderChance:L.diff.ladderChance, flames:L.diff.flames}
+  };
+  player = { x:L.start.x*S, y:L.start.y*S, w:16, h:24, vx:0, vy:0,
+             onGround:false, climbing:false, ladder:null, face:1, anim:0, alive:true };
   barrels = [];
   flames = [];
-  for(let i=0;i<cur.diff.flames;i++){
-    flames.push(makeFlame(cur.platforms[0], 40 + i*70));
-  }
-  kongTimer = 60;
-  kongRaise = 0;
-  scoredBarrels = 0;
-  bonus = 5000;
+  for(let i=0;i<cur.diff.flames;i++) flames.push(makeFlame(cur.platforms[0], (40+i*70)*S));
+  kongTimer = 70; kongRaise = 0; bonus = 5000;
 }
-
 function makeFlame(p, x){
-  return { x:x, y:p.y-8, w:8, h:8, vx:(Math.random()<0.5?-0.4:0.4), vy:0,
+  return { x:x, y:p.y-18, w:18, h:18, vx:(Math.random()<0.5?-0.8:0.8), vy:0,
            platY:p.y, onGround:true, climbing:false, ladder:null, climbDir:0, anim:0 };
 }
 
@@ -403,183 +359,135 @@ function platformLanding(ax, aw, prevBottom, bottom, vy){
   if(vy < 0) return null;
   const cx = ax + aw/2;
   for(const p of cur.platforms){
-    if(cx >= p.x-1 && cx <= p.x+p.w+1 && prevBottom <= p.y+1 && bottom >= p.y){
-      return p;
-    }
+    if(cx >= p.x-2 && cx <= p.x+p.w+2 && prevBottom <= p.y+2 && bottom >= p.y) return p;
   }
   return null;
 }
 function ladderAt(cx, feet){
-  for(const l of cur.ladders){
-    if(Math.abs(cx - l.x) < 5 && feet >= l.yTop-3 && feet <= l.yBottom+3) return l;
-  }
+  for(const l of cur.ladders)
+    if(Math.abs(cx-l.x) < 8 && feet >= l.yTop-6 && feet <= l.yBottom+6) return l;
   return null;
 }
 function platformUnder(cx, y){
-  for(const p of cur.platforms){
-    if(cx >= p.x-1 && cx <= p.x+p.w+1 && Math.abs(y - p.y) < 2) return p;
-  }
+  for(const p of cur.platforms)
+    if(cx >= p.x-2 && cx <= p.x+p.w+2 && Math.abs(y-p.y) < 4) return p;
   return null;
 }
-function overlap(a, b){
-  return a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
-}
+function overlap(a,b){ return a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y; }
 
 // ---------- Update ----------
 function update(){
   stateTimer++;
-  if(state === "play"){ updatePlay(); return; }
-  // non-play screens just animate
+  if(state === "play") updatePlay();
 }
-
 function updatePlay(){
-  const P = player;
-  const cx = P.x + P.w/2;
-  const feet = P.y + P.h;
+  const P = player, cx = P.x+P.w/2, feet = P.y+P.h;
 
   if(P.climbing){
-    P.vx = 0;
-    let moved = false;
+    P.vx = 0; let moved = false;
     if(input.up){ P.y -= CLIMB; moved = true; }
     if(input.down){ P.y += CLIMB; moved = true; }
-    if(moved && (stateTimer % 8 === 0)) sStep();
+    if(moved && stateTimer%8===0) sStep();
     P.x = P.ladder.x - P.w/2;
-    const f = P.y + P.h;
-    if(f <= P.ladder.yTop){ P.y = P.ladder.yTop - P.h; P.climbing = false; P.onGround = true; P.vy = 0; }
-    else if(f >= P.ladder.yBottom){ P.y = P.ladder.yBottom - P.h; P.climbing = false; P.onGround = true; P.vy = 0; }
-    if(input.jumpEdge){ P.climbing = false; P.vy = JUMP*0.7; P.onGround = false; }
+    const f = P.y+P.h;
+    if(f <= P.ladder.yTop){ P.y=P.ladder.yTop-P.h; P.climbing=false; P.onGround=true; P.vy=0; }
+    else if(f >= P.ladder.yBottom){ P.y=P.ladder.yBottom-P.h; P.climbing=false; P.onGround=true; P.vy=0; }
+    if(input.jumpEdge){ P.climbing=false; P.vy=JUMP*0.7; P.onGround=false; }
   } else {
-    if(input.left){ P.vx = -WALK; P.face = -1; }
-    else if(input.right){ P.vx = WALK; P.face = 1; }
-    else P.vx = 0;
-
-    // grab ladder up
+    if(input.left){ P.vx=-WALK; P.face=-1; }
+    else if(input.right){ P.vx=WALK; P.face=1; }
+    else P.vx=0;
     if(input.up){
       const l = ladderAt(cx, feet);
-      if(l && feet > l.yTop + 1){ P.climbing = true; P.ladder = l; P.vy = 0; }
+      if(l && feet > l.yTop+2){ P.climbing=true; P.ladder=l; P.vy=0; }
     } else if(input.down){
-      // step down a ladder whose top is where we stand
-      for(const l of cur.ladders){
-        if(Math.abs(cx - l.x) < 6 && Math.abs(feet - l.yTop) < 4){
-          P.climbing = true; P.ladder = l; P.y += 2; P.vy = 0; break;
-        }
-      }
+      for(const l of cur.ladders)
+        if(Math.abs(cx-l.x)<10 && Math.abs(feet-l.yTop)<6){ P.climbing=true; P.ladder=l; P.y+=3; P.vy=0; break; }
     }
-
     if(!P.climbing){
       P.x += P.vx;
-      if(input.jumpEdge && P.onGround){ P.vy = JUMP; P.onGround = false; sJump(); }
-      P.vy += GRAV; if(P.vy > MAXFALL) P.vy = MAXFALL;
-      const prevBottom = P.y + P.h;
-      P.y += P.vy;
-      P.onGround = false;
+      if(input.jumpEdge && P.onGround){ P.vy=JUMP; P.onGround=false; sJump(); }
+      P.vy += GRAV; if(P.vy>MAXFALL) P.vy=MAXFALL;
+      const prevBottom = P.y+P.h;
+      P.y += P.vy; P.onGround=false;
       const land = platformLanding(P.x, P.w, prevBottom, P.y+P.h, P.vy);
-      if(land){ P.y = land.y - P.h; P.vy = 0; P.onGround = true; }
-      if(P.vx !== 0 && P.onGround && (stateTimer % 10 === 0)) sStep();
+      if(land){ P.y=land.y-P.h; P.vy=0; P.onGround=true; }
+      if(P.vx!==0 && P.onGround && stateTimer%10===0) sStep();
     }
   }
-
   input.jumpEdge = false;
-  P.x = Math.max(0, Math.min(W - P.w, P.x));
+  P.x = Math.max(0, Math.min(W-P.w, P.x));
   if(P.y > H){ killPlayer(); return; }
   P.anim++;
 
-  // ---- Kong throws barrels ----
-  kongTimer--;
-  if(kongRaise > 0) kongRaise--;
+  // Kong throws barrels
+  kongTimer--; if(kongRaise>0) kongRaise--;
   if(kongTimer <= 0){
-    kongRaise = 18;
+    kongRaise = 22;
     const dir = cur.kongThrowDir;
-    barrels.push({
-      x: cur.kong.x + (dir>0? 18 : -4), y: cur.kong.y + 12,
-      w:8, h:6, vx: dir*cur.diff.speed, vy:0, platY:cur.platforms[4].y,
-      descending:false, ladder:null, scored:false, anim:0
-    });
+    barrels.push({ x:cur.kong.x+(dir>0?38:-8), y:cur.kong.y+26, w:16, h:12,
+                   vx:dir*cur.diff.speed, vy:0, platY:cur.platforms[4].y,
+                   descending:false, ladder:null, scored:false, anim:0 });
     sBarrel();
-    kongTimer = cur.diff.interval + (Math.random()*30 - 15 | 0);
+    kongTimer = cur.diff.interval + (Math.random()*30-15|0);
   }
 
-  // ---- Barrels ----
+  // Barrels
   for(let i=barrels.length-1;i>=0;i--){
-    const b = barrels[i];
-    b.anim++;
+    const b = barrels[i]; b.anim++;
     if(b.descending){
-      b.y += 0.9;
-      b.x = b.ladder.x - b.w/2;
-      if(b.y + b.h >= b.ladder.yBottom){
-        b.y = b.ladder.yBottom - b.h; b.descending = false; b.platY = b.ladder.yBottom;
-      }
+      b.y += 1.6; b.x = b.ladder.x - b.w/2;
+      if(b.y+b.h >= b.ladder.yBottom){ b.y=b.ladder.yBottom-b.h; b.descending=false; b.platY=b.ladder.yBottom; }
     } else {
-      b.x += b.vx;
-      b.vy += GRAV; if(b.vy > MAXFALL) b.vy = MAXFALL;
-      const prevBottom = b.y + b.h;
-      b.y += b.vy;
+      b.x += b.vx; b.vy += GRAV; if(b.vy>MAXFALL) b.vy=MAXFALL;
+      const prevBottom = b.y+b.h; b.y += b.vy;
       const land = platformLanding(b.x, b.w, prevBottom, b.y+b.h, b.vy);
       if(land){
-        b.y = land.y - b.h; b.vy = 0;
-        if(b.platY !== land.y){ b.vx = -b.vx; b.platY = land.y; } // zig-zag on drop
-        // chance to roll down a ladder
-        const bcx = b.x + b.w/2;
-        for(const l of cur.ladders){
-          if(Math.abs(bcx - l.x) < 4 && Math.abs((b.y+b.h) - l.yTop) < 3 && Math.random() < cur.diff.ladderChance){
-            b.descending = true; b.ladder = l; break;
-          }
-        }
+        b.y = land.y-b.h; b.vy=0;
+        if(b.platY !== land.y){ b.vx=-b.vx; b.platY=land.y; }
+        const bcx = b.x+b.w/2;
+        for(const l of cur.ladders)
+          if(Math.abs(bcx-l.x)<6 && Math.abs((b.y+b.h)-l.yTop)<5 && Math.random()<cur.diff.ladderChance){ b.descending=true; b.ladder=l; break; }
       }
     }
-    // bonus for hopping a barrel
     if(!b.scored && !P.climbing){
-      const bcx = b.x + b.w/2, pcx = P.x + P.w/2;
-      if(Math.abs(bcx - pcx) < 6 && P.y + P.h < b.y && !P.onGround){
-        b.scored = true; score += 100; sScore();
-      }
+      const bcx=b.x+b.w/2, pcx=P.x+P.w/2;
+      if(Math.abs(bcx-pcx)<12 && P.y+P.h < b.y && !P.onGround){ b.scored=true; score+=100; sScore(); }
     }
-    if(b.y > H + 8 || b.x < -10 || b.x > W+10){ barrels.splice(i,1); continue; }
-    if(overlap(P, b)){ killPlayer(); return; }
+    if(b.y > H+16 || b.x < -20 || b.x > W+20){ barrels.splice(i,1); continue; }
+    if(overlap(P,b)){ killPlayer(); return; }
   }
 
-  // ---- Flames ----
-  for(const f of flames){
-    updateFlame(f);
-    if(overlap(P, f)){ killPlayer(); return; }
-  }
+  // Flames
+  for(const f of flames){ updateFlame(f); if(overlap(P,f)){ killPlayer(); return; } }
 
-  // ---- bonus countdown ----
-  if(stateTimer % 12 === 0 && bonus > 100) bonus -= 100;
+  if(stateTimer%12===0 && bonus>100) bonus -= 100;
 
-  // ---- reach the top / princess ----
-  if(P.onGround && P.y + P.h <= cur.platforms[4].y + 2){
-    winLevel();
-  }
+  if(P.onGround && P.y+P.h <= cur.platforms[4].y + 4) winLevel();
 }
 
 function updateFlame(f){
   f.anim++;
   if(f.climbing){
-    f.y += f.climbDir * 0.5;
-    f.x = f.ladder.x - f.w/2;
-    if(f.climbDir < 0 && f.y + f.h <= f.ladder.yTop){ f.y = f.ladder.yTop - f.h; f.climbing=false; f.platY=f.ladder.yTop; }
-    if(f.climbDir > 0 && f.y + f.h >= f.ladder.yBottom){ f.y = f.ladder.yBottom - f.h; f.climbing=false; f.platY=f.ladder.yBottom; }
+    f.y += f.climbDir*1.0; f.x = f.ladder.x - f.w/2;
+    if(f.climbDir<0 && f.y+f.h <= f.ladder.yTop){ f.y=f.ladder.yTop-f.h; f.climbing=false; f.platY=f.ladder.yTop; }
+    if(f.climbDir>0 && f.y+f.h >= f.ladder.yBottom){ f.y=f.ladder.yBottom-f.h; f.climbing=false; f.platY=f.ladder.yBottom; }
     return;
   }
-  f.x += f.vx;
-  f.vy += GRAV; if(f.vy > MAXFALL) f.vy = MAXFALL;
-  const prevBottom = f.y + f.h;
-  f.y += f.vy;
+  f.x += f.vx; f.vy += GRAV; if(f.vy>MAXFALL) f.vy=MAXFALL;
+  const prevBottom = f.y+f.h; f.y += f.vy;
   const land = platformLanding(f.x, f.w, prevBottom, f.y+f.h, f.vy);
-  if(land){ f.y = land.y - f.h; f.vy = 0; f.platY = land.y; f.onGround = true; }
-  // turn around at edges / chase player a little
-  const fcx = f.x + f.w/2;
+  if(land){ f.y=land.y-f.h; f.vy=0; f.platY=land.y; f.onGround=true; }
+  const fcx = f.x+f.w/2;
   if(f.onGround){
-    const ahead = platformUnder(fcx + f.vx*6, f.platY);
-    if(!ahead || f.x < 2 || f.x > W - f.w - 2){ f.vx = -f.vx; }
-    if(Math.random() < 0.01){ f.vx = (player.x > f.x ? 1 : -1) * Math.abs(f.vx); }
-    // climb toward the player occasionally
-    if(Math.random() < 0.012){
+    const ahead = platformUnder(fcx + f.vx*8, f.platY);
+    if(!ahead || f.x<2 || f.x>W-f.w-2) f.vx = -f.vx;
+    if(Math.random()<0.01) f.vx = (player.x>f.x?1:-1)*Math.abs(f.vx);
+    if(Math.random()<0.012){
       for(const l of cur.ladders){
-        if(Math.abs(fcx - l.x) < 5){
-          if(player.y < f.y && Math.abs((f.y+f.h) - l.yBottom) < 4){ f.climbing=true; f.ladder=l; f.climbDir=-1; break; }
-          if(player.y > f.y && Math.abs((f.y+f.h) - l.yTop) < 4){ f.climbing=true; f.ladder=l; f.climbDir=1; break; }
+        if(Math.abs(fcx-l.x)<7){
+          if(player.y<f.y && Math.abs((f.y+f.h)-l.yBottom)<6){ f.climbing=true; f.ladder=l; f.climbDir=-1; break; }
+          if(player.y>f.y && Math.abs((f.y+f.h)-l.yTop)<6){ f.climbing=true; f.ladder=l; f.climbDir=1; break; }
         }
       }
     }
@@ -588,160 +496,144 @@ function updateFlame(f){
 
 function killPlayer(){
   if(!player.alive) return;
-  player.alive = false;
-  lives--;
-  sDie();
-  state = "dead"; stateTimer = 0;
+  player.alive=false; lives--; sDie(); state="dead"; stateTimer=0;
 }
 function winLevel(){
-  score += bonus;
-  sWin();
-  if(levelIdx >= LEVELS.length - 1){ state = "win"; }
-  else { state = "clear"; }
+  score += bonus; sWin();
+  if(score>hiscore){ hiscore=score; localStorage.setItem("dk_hi",hiscore); }
+  state = (levelIdx >= LEVELS.length-1) ? "win" : "clear";
   stateTimer = 0;
-  if(score > hiscore){ hiscore = score; localStorage.setItem("dk_hi", hiscore); }
 }
-
 function advanceState(){
-  if(state === "title"){ score=0; lives=3; levelIdx=0; loadLevel(0); state="play"; stateTimer=0; }
-  else if(state === "clear"){ levelIdx++; loadLevel(levelIdx); state="play"; stateTimer=0; }
-  else if(state === "dead"){
-    if(lives > 0){ loadLevel(levelIdx); state="play"; stateTimer=0; }
-    else { state="over"; stateTimer=0; }
-  }
-  else if(state === "win" || state === "over"){ state="title"; stateTimer=0; }
+  if(state==="title"){ score=0; lives=3; levelIdx=0; loadLevel(0); state="play"; stateTimer=0; }
+  else if(state==="clear"){ levelIdx++; loadLevel(levelIdx); state="play"; stateTimer=0; }
+  else if(state==="dead"){ if(lives>0){ loadLevel(levelIdx); state="play"; stateTimer=0; } else { state="over"; stateTimer=0; } }
+  else if(state==="win" || state==="over"){ state="title"; stateTimer=0; }
 }
 
 // ---------- Render ----------
 function render(){
-  clear(3);
-  if(state === "title"){ renderTitle(); return; }
+  clearbg();
+  if(state==="title"){ renderTitle(); return; }
 
-  // play field
-  for(const p of cur.platforms) drawPlatform(p);
+  for(const p of cur.platforms) drawGirder(p);
   for(const l of cur.ladders) drawLadder(l);
-  drawKong(cur.kong.x, cur.kong.y, kongRaise > 0);
+  if(cur.diff.flames>0) drawDrum(6, cur.platforms[0].y-22, stateTimer);
+  drawKong(cur.kong.x, cur.kong.y, kongRaise>0);
   drawPrincess(cur.princess.x, cur.princess.y, (stateTimer>>4)&1);
+  for(const b of barrels) drawBarrel(b.x|0, b.y|0);
+  for(const f of flames) drawFlame(f.x|0, f.y|0, f.anim);
 
-  for(const b of barrels) sprite(SPR_BARREL, b.x|0, b.y|0, false);
-  for(const f of flames) sprite((f.anim>>2)&1 ? SPR_FLAME_B : SPR_FLAME_A, f.x|0, f.y|0, false);
-
-  // player (blink while dead)
-  if(state !== "dead" || ((stateTimer>>2)&1)){
-    if(player.climbing) sprite(SPR_PLAYER_CLIMB, player.x|0, player.y|0, false);
-    else sprite(SPR_PLAYER, player.x|0, player.y|0, player.face<0);
-  }
+  if(state!=="dead" || ((stateTimer>>2)&1))
+    drawJumpman(player.x|0, player.y|0, player.face, player.anim, player.climbing);
 
   drawHUD();
-
-  if(state === "clear"){ banner("LEVEL " + (levelIdx+1) + " CLEAR", "+" + bonus + " BONUS"); }
-  else if(state === "win"){ banner("YOU WIN!", "PRESS JUMP"); }
-  else if(state === "over"){ banner("GAME OVER", "PRESS JUMP"); }
+  if(state==="clear") banner("LEVEL "+(levelIdx+1)+" CLEAR", "+"+bonus+" BONUS");
+  else if(state==="win") banner("YOU WIN!", "PRESS JUMP");
+  else if(state==="over") banner("GAME OVER", "PRESS JUMP");
 }
-
 function drawHUD(){
-  rect(0,0,W,9,0);
-  text("SC " + pad(score,6), 2, 2, 3);
-  text("L" + (levelIdx+1), 72, 2, 2);
-  // lives as little heads
-  for(let i=0;i<lives;i++){ rect(98 + i*7, 2, 3, 5, 2); rect(99 + i*7, 3, 1, 1, 0); }
-  text("BN " + pad(bonus,4), 124, 2, 3);
+  rect(0,0,W,18,'k');
+  text("SC "+pad(score,6), 4, 4, 'w', 2);
+  text("L"+(levelIdx+1), 150, 4, 'y', 2);
+  for(let i=0;i<lives;i++){ const lx=196+i*16; rect(lx+3,4,9,3,'r'); rect(lx+4,7,7,5,'s'); rect(lx+5,8,1,1,'k'); rect(lx+8,8,1,1,'k'); }
+  text("BN "+pad(bonus,4), 256, 4, 'w', 2);
 }
-function pad(n, len){ let s = "" + (n|0); while(s.length < len) s = "0" + s; return s; }
-
-function banner(a, b){
-  rect(10, 52, 140, 40, 0);
-  rect(12, 54, 136, 36, 1);
-  textC(a, 60, 0, 2);
-  textC(b, 76, 3, 1);
+function pad(n,len){ let s=""+(n|0); while(s.length<len) s="0"+s; return s; }
+function banner(a,b){
+  rect(36,112,248,60,'k'); rect(40,116,240,52,'g'); rect(44,120,232,44,'G');
+  textC(a, 128, 'w', 3); textC(b, 150, 'l', 2);
 }
 
-let titleAnim = 0;
+let titleAnim=0;
 function renderTitle(){
   titleAnim++;
-  rect(0,0,W,H,3);
-  // little scene
-  rect(0,128,W,16,1);
-  rect(0,128,W,1,2);
-  drawKong(18, 96, ((titleAnim>>4)&1));
-  drawPrincess(120, 110, (titleAnim>>4)&1);
-  // ladder + barrel deco
-  drawLadder({x:60,yTop:90,yBottom:128});
-  sprite(SPR_BARREL, 44 + ((titleAnim>>1)%70), 122, false);
+  // backdrop
+  rect(0,H-28,W,28,'g'); rect(0,H-28,W,4,'l');
+  drawGirder({x:60,y:200,w:200});
+  drawLadder({x:150,yTop:206,yBottom:H-28});
+  drawKong(40, 150, ((titleAnim>>4)&1));
+  drawPrincess(250, 168, (titleAnim>>4)&1);
+  drawBarrel(90 + ((titleAnim*2)%180), 188);
+  drawJumpman(210, 232, -1, titleAnim, false);
 
-  rect(8, 14, 144, 34, 0);
-  rect(10, 16, 140, 30, 1);
-  textC("DONKEY", 20, 3, 2);
-  textC("KONG", 32, 3, 2);
+  rect(24,28,272,70,'k'); rect(30,34,260,58,'g'); rect(36,40,248,46,'G');
+  textC("DONKEY", 46, 'w', 4);
+  textC("KONG", 70, 'y', 4);
 
-  textC("GAME BOY EDITION", 58, 1);
-  if((titleAnim>>4)&1) textC("PRESS JUMP TO START", 72, 0, 1);
-  textC("HI " + pad(hiscore,6), 86, 1);
-  textC("PAL " + palName, 100, 1);
+  textC("HIGH RES EDITION", 112, palMode==="color"?'a':'2', 2);
+  if((titleAnim>>4)&1) textC("PRESS JUMP TO START", 132, 'w', 2);
+  textC("HI "+pad(hiscore,6), 154, 'l', 2);
+  textC(PAL_LABEL[palMode], 174, palMode==="color"?'F':'2', 2);
 }
+
+// ---------- Audio ----------
+let muted = localStorage.getItem("dk_mute")==="1";
+let actx = null;
+function audioInit(){ if(!actx){ try{ actx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } }
+function beep(freq,dur,type){
+  if(muted||!actx) return;
+  const o=actx.createOscillator(), g=actx.createGain();
+  o.type=type||"square"; o.frequency.value=freq; g.gain.value=0.06;
+  o.connect(g); g.connect(actx.destination);
+  const t=actx.currentTime; o.start(t);
+  g.gain.setValueAtTime(0.06,t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.stop(t+dur);
+}
+function sJump(){ beep(660,0.12); setTimeout(()=>beep(880,0.10),60); }
+function sStep(){ beep(180,0.04); }
+function sDie(){ beep(300,0.15,"sawtooth"); setTimeout(()=>beep(160,0.25,"sawtooth"),120); setTimeout(()=>beep(90,0.4,"sawtooth"),300); }
+function sWin(){ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>beep(f,0.18),i*120)); }
+function sScore(){ beep(1200,0.06); }
+function sBarrel(){ beep(120,0.05,"triangle"); }
 
 // ---------- Input ----------
 const input = { left:false, right:false, up:false, down:false, jump:false, jumpEdge:false };
-
-function pressJump(){
-  audioInit();
-  if(state === "play"){ input.jump = true; input.jumpEdge = true; }
-  else { advanceState(); }
-}
-function releaseJump(){ input.jump = false; }
-
-function bindHold(id, key){
-  const el = document.getElementById(id);
-  const on  = e => { e.preventDefault(); input[key] = true; audioInit(); };
-  const off = e => { e.preventDefault(); input[key] = false; };
-  el.addEventListener("pointerdown", on);
-  el.addEventListener("pointerup", off);
-  el.addEventListener("pointerleave", off);
-  el.addEventListener("pointercancel", off);
+function pressJump(){ audioInit(); if(state==="play"){ input.jump=true; input.jumpEdge=true; } else advanceState(); }
+function releaseJump(){ input.jump=false; }
+function bindHold(id,key){
+  const el=document.getElementById(id);
+  const on=e=>{ e.preventDefault(); input[key]=true; audioInit(); };
+  const off=e=>{ e.preventDefault(); input[key]=false; };
+  el.addEventListener("pointerdown",on); el.addEventListener("pointerup",off);
+  el.addEventListener("pointerleave",off); el.addEventListener("pointercancel",off);
 }
 bindHold("up","up"); bindHold("down","down"); bindHold("left","left"); bindHold("right","right");
+const jumpBtn=document.getElementById("jump");
+jumpBtn.addEventListener("pointerdown",e=>{ e.preventDefault(); pressJump(); });
+jumpBtn.addEventListener("pointerup",e=>{ e.preventDefault(); releaseJump(); });
 
-const jumpBtn = document.getElementById("jump");
-jumpBtn.addEventListener("pointerdown", e=>{ e.preventDefault(); pressJump(); });
-jumpBtn.addEventListener("pointerup",   e=>{ e.preventDefault(); releaseJump(); });
-
-// keyboard (desktop)
-const KEYMAP = { ArrowLeft:"left", ArrowRight:"right", ArrowUp:"up", ArrowDown:"down",
-                 a:"left", d:"right", w:"up", s:"down" };
-window.addEventListener("keydown", e=>{
-  if(KEYMAP[e.key]){ input[KEYMAP[e.key]] = true; e.preventDefault(); }
-  if(e.key === " "){ if(!e.repeat) pressJump(); e.preventDefault(); }
+const KEYMAP={ArrowLeft:"left",ArrowRight:"right",ArrowUp:"up",ArrowDown:"down",a:"left",d:"right",w:"up",s:"down"};
+window.addEventListener("keydown",e=>{
+  if(KEYMAP[e.key]){ input[KEYMAP[e.key]]=true; e.preventDefault(); }
+  if(e.key===" "){ if(!e.repeat) pressJump(); e.preventDefault(); }
 });
-window.addEventListener("keyup", e=>{
-  if(KEYMAP[e.key]){ input[KEYMAP[e.key]] = false; e.preventDefault(); }
-  if(e.key === " "){ releaseJump(); }
+window.addEventListener("keyup",e=>{
+  if(KEYMAP[e.key]){ input[KEYMAP[e.key]]=false; e.preventDefault(); }
+  if(e.key===" ") releaseJump();
 });
 
-// chips
-document.getElementById("palBtn").addEventListener("click", ()=>{
-  palName = palName === "green" ? "gray" : "green";
-  PAL = PALETTES[palName];
-  localStorage.setItem("dk_pal", palName);
+const palBtn=document.getElementById("palBtn");
+function refreshPal(){ palBtn.textContent = PAL_LABEL[palMode]; }
+palBtn.addEventListener("click",()=>{
+  palMode = PAL_ORDER[(PAL_ORDER.indexOf(palMode)+1)%PAL_ORDER.length];
+  localStorage.setItem("dk_pal3",palMode); refreshPal();
 });
-const muteBtn = document.getElementById("muteBtn");
-function refreshMute(){ muteBtn.textContent = muted ? "MUTED" : "SOUND"; }
-muteBtn.addEventListener("click", ()=>{ muted = !muted; localStorage.setItem("dk_mute", muted?"1":"0"); audioInit(); refreshMute(); });
+refreshPal();
+const muteBtn=document.getElementById("muteBtn");
+function refreshMute(){ muteBtn.textContent = muted?"MUTED":"SOUND"; }
+muteBtn.addEventListener("click",()=>{ muted=!muted; localStorage.setItem("dk_mute",muted?"1":"0"); audioInit(); refreshMute(); });
 refreshMute();
 
-// prevent page scroll/zoom gestures
-document.addEventListener("touchmove", e=>e.preventDefault(), {passive:false});
-document.addEventListener("gesturestart", e=>e.preventDefault());
-document.addEventListener("dblclick", e=>e.preventDefault());
+document.addEventListener("touchmove",e=>e.preventDefault(),{passive:false});
+document.addEventListener("gesturestart",e=>e.preventDefault());
+document.addEventListener("dblclick",e=>e.preventDefault());
 
-// ---------- Loop (fixed timestep) ----------
-const STEP = 1000/60;
-let acc = 0, last = performance.now();
+// ---------- Loop ----------
+const STEP=1000/60; let acc=0, last=performance.now();
 function frame(now){
-  acc += now - last; last = now;
-  if(acc > 200) acc = 200;
-  while(acc >= STEP){ update(); acc -= STEP; }
-  render();
-  requestAnimationFrame(frame);
+  acc += now-last; last=now; if(acc>200) acc=200;
+  while(acc>=STEP){ update(); acc-=STEP; }
+  render(); requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 

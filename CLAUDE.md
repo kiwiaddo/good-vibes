@@ -14,6 +14,7 @@ play well on phones (touch controls, responsive, scroll/zoom suppressed).
 | --- | --- |
 | `index.html` | Arcade **hub / landing page**. Grid of game cards (pixel-art icon drawn on a tiny `<canvas>` + name) linking to each game. Add a future game = add one card + its own page. |
 | `donkey-kong.html` | The **Donkey Kong game**, fully self-contained (inline CSS + JS). |
+| `lemmings.html` | The **Lemmings game**, fully self-contained. Pixel-destructible terrain + the 8 classic skills, tuned for touch. |
 | `.github/workflows/deploy-pages.yml` | Deploys the repo root to GitHub Pages. |
 | `README.md` | Player-facing readme (controls, deploy notes). |
 
@@ -73,6 +74,40 @@ All inside one IIFE. Key pieces, in order:
 - **Audio:** tiny WebAudio square-wave blips, lazily initialised on first tap
   (mobile autoplay rule); mute persisted in `localStorage["dk_mute"]`.
 
+## lemmings.html architecture
+
+One IIFE, mirrors the donkey-kong conventions (palette keys, `col()`, `FONT`/
+`text()`, `STEP=1000/60` accumulator, lazy WebAudio, localStorage `lem_pal3` /
+`lem_mute`). Internal canvas `256×176` = a 16px in-canvas HUD strip over a
+`256×160` viewport onto a wider level (`camX` horizontal scroll only). Default
+palette is `color`. Key pieces:
+
+- **Terrain** is a `Uint8Array(lw*LH)` of values `0 empty / 1 dirt / 2 dirt-
+  shade / 3 brick / 4 steel`, rendered via an **offscreen canvas + resident
+  `ImageData` + `Uint32Array` view + `TER_LUT`** (value→packed RGBA, rebuilt on
+  palette toggle). Full repaints (`repaintTerrain`) are a single LUT loop;
+  in-play edits go through `setTer()` which unions a dirty rect flushed once per
+  frame. Mutators: `digRect`, `digDisc`, `layBrick`. Levels are authored
+  compactly via `paint:[...]` op lists (`box`/`box0`/`steel`/`rampR`/`rampL`/
+  `blob`) run by `buildTerrain()`, plus a dither texture pass. **New terrain/
+  lemming color keys must be in BOTH `KEY_TONE` and `GBC`** (magenta fallback).
+- **Lemmings** are `{x (foot, center-bottom), y, dir, state, timer, fallDist,
+  climber, floater, bombT, bricks}`. Logic ticks every `LEM_TICK` frames.
+  States: walker / faller / floater / climber / hoister / digger / basher /
+  miner / builder / blocker / splatter / exiter, plus an orthogonal `bombT`
+  countdown. Collision is **foot-pixel** tests against the terrain bitmap
+  (`solid()`/`steelAt()`). Subtleties baked in (and regression-tested):
+  basher's continuation scan must reach *past* the slice it just cleared, miner
+  becomes a faller when it breaks into open air, the hatch must sit within
+  `SPLAT_H` of its landing (else lemmings splat on spawn), and a builder spans
+  ~24px so gaps are kept narrow.
+- **Skills:** `canAssign()`/`assignSkill()`; `pickLemming()` does nearest-within-
+  `TAP_R` selection preferring assignable candidates. Toolbar is HTML buttons
+  (arming, counts, RR ±, pause, ffwd, double-tap nuke).
+- **Flow:** `title → intro → play → result → … → win`; tap advances non-play
+  screens. Touch model: drag-to-pan vs tap-to-assign disambiguated by a
+  movement slop + time ceiling; assignment is allowed while paused.
+
 ## Conventions
 
 - Keep everything **dependency-free and build-free**; a game is one HTML file.
@@ -89,3 +124,13 @@ thousand frames and asserting no exceptions. A `fillStyle` setter that flags
 used to validate the resolution/palette work — replicate it for sprite or
 palette changes.) You can also emit an **SVG** by capturing the `fillRect` calls
 of one rendered frame to preview the look.
+
+For `lemmings.html` the same harness applies, with extras worth keeping in mind:
+the IIFE exposes a `window.__lemHook({...})` test handle (state, `lems`, `ter`,
+`loadLevel`, `assignSkill`, `pickLemming`, frame stepping) so a headless run can
+place lemmings, assign each skill and assert terrain mutations / survival, and
+**script a full solve of every level** to prove they're winnable with their skill
+loadout. Stub `canvas.getBoundingClientRect()` (e.g. 256×176) so CSS px map 1:1
+to world px; keep the magenta-`fillStyle` guard. When editing a skill or a level,
+re-run the per-skill scenarios *and* the all-levels solver — terrain geometry is
+easy to make subtly unsolvable.

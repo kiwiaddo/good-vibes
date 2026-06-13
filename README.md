@@ -9,6 +9,7 @@ no install and no build step (just static HTML + Canvas).
 | Game | Status |
 | --- | --- |
 | 🛢️ **Donkey Kong** — climb the girders, leap the barrels, rescue the princess | Playable |
+| ☂️ **Lemmings** — guide the little fellows to the exit with 8 classic skills | Playable |
 | ❓ Coming soon | — |
 
 The landing page (`index.html`) is a hub of game cards; each game lives on its
@@ -36,6 +37,32 @@ its own page.
 - Jump *over* a barrel for bonus points; reach the top before the bonus
   timer runs out. Three handcrafted levels with rising difficulty — the
   third adds a roaming flame.
+
+## Lemmings — controls
+
+A faithful, phone-friendly take on the classic. Lemmings pour from the hatch,
+walk, turn at walls, and fall off ledges — assign skills to steer enough of
+them to the exit before the timer runs out.
+
+| Action | Touch | Keyboard |
+| --- | --- | --- |
+| Arm a skill | Tap a skill button | `1`–`8` |
+| Assign skill | Tap a lemming (snaps to the nearest) | — |
+| Scroll the level | Drag the field, or **◀ ▶ PAN** | Arrow keys / A,D |
+| Release rate | **RATE −/+** | `-` / `+` |
+| Pause | **PAUSE** | Space |
+| Fast-forward | **FFWD** | `F` |
+| Nuke (blow them all up) | **NUKE** twice | — |
+| Start / continue | Tap | Space |
+
+- The 8 skills: **Climber, Floater, Bomber, Blocker, Builder, Basher, Miner,
+  Digger** — each level gives a limited supply.
+- Terrain is fully destructible: diggers/bashers/miners tunnel through it,
+  builders lay bridges, bombers (and the nuke) blast craters. **Steel** can't
+  be dug.
+- You can assign skills **while paused** — handy on a small screen.
+- **PALETTE** cycles full colour ↔ green ↔ grayscale Game Boy; **SOUND** mutes.
+- Eight original levels introduce one skill at a time, then combine them.
 
 ## Deployment (GitHub Pages)
 

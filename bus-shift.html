@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0f380f">
-<title>ONE STREET · Good Vibes Arcade</title>
+<title>ONE STREET / SHIFT · Good Vibes Arcade</title>
 <style>
   :root{ --c0:#0f380f; --c1:#306230; --c2:#8bac0f; --c3:#9bbc0f; }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -40,7 +40,7 @@
     border-radius:6px; padding:5px 2px; font-size:10px; font-weight:bold; letter-spacing:1px;
   }
   .vchip.on{ background:var(--c1); color:var(--c3); border-color:var(--c2); }
-  #controls{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:2px; }
+  #controls{ display:flex; align-items:center; justify-content:space-between; gap:6px; margin-top:2px; }
   #dpad{ display:grid; grid-template-columns:repeat(3,50px); grid-template-rows:repeat(3,50px); gap:4px; }
   .btn{
     background:var(--c1); color:var(--c3); border:none; border-bottom:4px solid var(--c0);
@@ -49,10 +49,16 @@
   }
   .btn:active{ background:var(--c2); color:var(--c0); border-bottom-width:2px; transform:translateY(2px); }
   #up{ grid-area:1/2; } #left{ grid-area:2/1; } #right{ grid-area:2/3; } #down{ grid-area:3/2; }
+  #doorsBtn{
+    width:72px; height:108px; border-radius:12px;
+    background:#2f7a5a; color:#eafff4; border-bottom:6px solid #175139;
+    font-size:13px; letter-spacing:1px;
+  }
+  #doorsBtn:active{ background:#3fa176; border-bottom-width:2px; transform:translateY(3px); }
   #horn{
-    width:108px; height:108px; border-radius:50%;
+    width:84px; height:108px; border-radius:12px;
     background:#c8901c; color:#2a1c04; border-bottom:6px solid #7a5610;
-    font-size:17px; letter-spacing:1px;
+    font-size:15px; letter-spacing:1px;
   }
   #horn:active{ background:#e8ae30; border-bottom-width:2px; transform:translateY(3px); }
   #hint{ text-align:center; font-size:10px; color:var(--c1); letter-spacing:1px; margin-top:2px; line-height:1.5; }
@@ -75,10 +81,10 @@
       <button class="chip" id="resetBtn">RESET</button>
     </div>
     <div id="variants">
-      <a class="vchip on" href="bus.html">RIGID</a>
+      <a class="vchip" href="bus.html">RIGID</a>
       <a class="vchip" href="bus-bendy.html">BENDY</a>
       <a class="vchip" href="bus-chase.html">CHASE</a>
-      <a class="vchip" href="bus-shift.html">SHIFT</a>
+      <a class="vchip on" href="bus-shift.html">SHIFT</a>
     </div>
 
     <div id="controls">
@@ -89,8 +95,9 @@
         <button class="btn" id="down">&#9660;</button>
       </div>
       <button class="btn" id="horn">HORN</button>
+      <button class="btn" id="doorsBtn">DOORS</button>
     </div>
-    <div id="hint">PROTOTYPE &middot; NO SCORE, NO TIMER, NO PASSENGERS<br>Gate test: is threading this street twice in a row fun on its own?</div>
+    <div id="hint">VARIANT: SHIFT &middot; clock + stops + passenger comfort<br>Same bus, same street &mdash; this one adds all three pressures at once.</div>
   </div>
 
 <script>
@@ -294,6 +301,44 @@ const PARKED_SPEC = [
   {s:178, q:1.9,  a:0.56,  t:"car", tint:"c", straddle:true}   // BADLY: 32 deg across two bays
 ];
 const BIN_SPEC = [ {s:60,q:3.0},{s:62.2,q:3.05},{s:184,q:-2.8},{s:186.4,q:-2.95},{s:188.6,q:-2.6} ];
+
+// Four stops on alternating kerbs, clear of the parked cars.
+const STOP_SPEC = [ {s:46,q:3.2},{s:112,q:-3.0},{s:168,q:3.1},{s:228,q:-3.4} ];
+const SHIFT_START = 100, STOP_BONUS = 18;
+let STOPS = [];
+const shift = { time:SHIFT_START, score:0, served:0, comfort:1, boardT:0, flash:0, over:false };
+function buildStops(){
+  STOPS = STOP_SPEC.map(sp=>{
+    const w = toWorld(sp.s, sp.q);
+    return { x:w.x, y:w.y, ang:w.ang, s:sp.s, q:sp.q, waiting:2+((Math.random()*4)|0), served:false };
+  });
+}
+function nextStop(){
+  let best = null, bd = 1e9;
+  const bp = busS();
+  for(const st of STOPS){
+    if(st.served) continue;
+    const d = Math.abs(st.s - bp.s);
+    if(d < bd){ bd = d; best = st; }
+  }
+  return best;
+}
+// Gap from the bus flank to the stop, and how square the bus is to the kerb --
+// park badly and boarding drags.
+function stopFit(st){
+  const c = Math.cos(bus.h), s = Math.sin(bus.h);
+  const dx = st.x-bus.rx, dy = st.y-bus.ry;
+  let la = dx*c + dy*s;
+  la = Math.max(-REAR_OH, Math.min(WB+FRONT_OH, la));
+  const px = bus.rx + la*c, py = bus.ry + la*s;
+  const d = Math.max(0, Math.hypot(st.x-px, st.y-py) - BUS_HW);
+  const p = pathPoint(st.s);
+  let ang = bus.h - Math.atan2(p.dy, p.dx);
+  while(ang >  Math.PI) ang -= 2*Math.PI;
+  while(ang < -Math.PI) ang += 2*Math.PI;
+  if(Math.abs(ang) > Math.PI/2) ang = Math.PI - Math.abs(ang);
+  return { d, ang:Math.abs(ang), time:Math.min(3.2, 0.7 + d*0.55 + Math.abs(ang)*1.4) };
+}
 
 let obstacles = [], bins = [];
 function buildWorld(){
@@ -558,6 +603,7 @@ function resolveHit(nx,ny,depth,px,py){
     addSparks(px, py, 3 + (impact*1.5|0));
     sBump(impact);
     hitCount++;
+    shift.time -= 2; shift.comfort = Math.max(0.15, shift.comfort - 0.18);
     squeezeDirty = true;
   }
   bus.bump = Math.max(bus.bump, Math.min(1, impact/6));
@@ -632,12 +678,13 @@ function sy(y){ return (y-camY)*PPM + H/2 + shakeY; }
 // ============================================================
 // Update
 // ============================================================
-const input = { left:false, right:false, up:false, down:false, horn:false, hornEdge:false };
+const input = { left:false, right:false, up:false, down:false, horn:false, hornEdge:false, doors:false };
 let timeScale = 1, showGhost = true, frameNo = 0;
 let noClip = false;   // test-only: skip collision resolution
 
 function update(){
   frameNo++;
+  if(shift.over){ if(shift.flash > 0) shift.flash -= 1/60; return; }
   const target = squeezing ? 0.9 : 1;
   timeScale += (target - timeScale) * 0.12;
   const dt = (1/60) * timeScale;
@@ -697,6 +744,33 @@ function update(){
     p.life -= dt; if(p.life <= 0) sparks.splice(i,1);
   }
 
+  // Comfort: standing passengers object to lateral load. It is a MULTIPLIER,
+  // never a fail state -- the moment it can end a run this becomes a chore.
+  const yaw = Math.abs(bus.v*Math.tan(bus.steer)/WB);
+  const latAcc = Math.abs(bus.v)*yaw;
+  if(latAcc > 2.2) shift.comfort -= (latAcc-2.2)*0.10*dt;
+  else shift.comfort += 0.055*dt;
+  shift.comfort = Math.max(0.15, Math.min(1, shift.comfort));
+
+  shift.time -= dt;
+  if(shift.flash > 0) shift.flash -= dt;
+  if(shift.time <= 0){ shift.time = 0; shift.over = true; sShiftEnd(); }
+
+  const st = nextStop();
+  if(st && input.doors && Math.abs(bus.v) < 0.4 && st.waiting > 0){
+    const fit = stopFit(st);
+    if(fit.d < 3.0){
+      shift.boardT += dt / fit.time;
+      if(shift.boardT >= 1){
+        st.served = true; st.waiting = 0;
+        shift.score += Math.round(100*shift.comfort);
+        shift.time += STOP_BONUS; shift.served++; shift.boardT = 0;
+        shift.flash = 1.2; sServed();
+        if(STOPS.every(x=>x.served)) buildStops();
+      }
+    } else shift.boardT = Math.max(0, shift.boardT - dt*0.6);
+  } else shift.boardT = Math.max(0, shift.boardT - dt*0.6);
+
   clearL = probeSide(1); clearR = probeSide(-1);
   const wasSqueezing = squeezing;
   squeezing = clearL < 0.75 && clearR < 0.75;
@@ -706,7 +780,7 @@ function update(){
     else if(g < squeezeMin) squeezeMin = g;
     sSqueeze(g);
   } else if(wasSqueezing){
-    if(!squeezeDirty){ squeezeFlash = 1.1; squeezeFlashVal = squeezeMin; sChime(); }
+    if(!squeezeDirty){ squeezeFlash = 1.1; squeezeFlashVal = squeezeMin; sChime(); shift.score += 25; }
     squeezeDirty = false;
   }
   if(squeezeFlash > 0) squeezeFlash -= dt;
@@ -784,6 +858,36 @@ function vanParts(blink){
   return P;
 }
 
+function stopParts(st){
+  const P = [[-1.8,-0.55, 1.8,0.55, st.served?'X':'h'],
+             [-1.8,-0.55, 1.8,-0.28, st.served?'X':'y']];
+  const side = st.q > 0 ? 1 : -1;
+  for(let i=0;i<st.waiting;i++){
+    const o = -1.2 + i*0.62;
+    P.push([o-0.16, side*0.72, o+0.16, side*1.02, 'w']);
+  }
+  return P;
+}
+// Sega's navigation trick: far away the arrow follows the ROAD, because
+// pointing straight at the destination just confuses people. Close in, it
+// snaps to point directly at the stop.
+function drawStopArrow(){
+  const st = nextStop(); if(!st) return;
+  const bp = busS(), dS = st.s - bp.s, near = Math.abs(dS) < 25;
+  let ax, ay;
+  if(near){
+    const c = busCentre(), dx = st.x-c.x, dy = st.y-c.y, L = Math.hypot(dx,dy)||1;
+    ax = dx/L; ay = dy/L;
+  } else {
+    const p = pathPoint(bp.s), sg = dS > 0 ? 1 : -1;
+    ax = p.dx*sg; ay = p.dy*sg;
+  }
+  const c = busCentre(), bx = sx(c.x), by = sy(c.y), k = near ? 'e' : 'y';
+  const hx = bx + ax*20, hy = by + ay*20;
+  dline(bx, by, hx, hy, k, 1);
+  dline(hx, hy, hx - ax*6 + ay*5, hy - ay*6 - ax*5, k, 1);
+  dline(hx, hy, hx - ax*6 - ay*5, hy - ay*6 + ax*5, k, 1);
+}
 function drawStreet(){
   ctx.fillStyle = col('b'); ctx.fillRect(0,0,W,H);
   // Building texture: a coarse window grid, skipped anywhere near the corridor.
@@ -852,28 +956,40 @@ function drawGhost(){
 }
 
 function drawHUD(){
-  rect(0,0,W,15,'a');
+  rect(0,0,W,22,'a');
+  const t = Math.ceil(shift.time);
+  text("TIME "+t, 4, 3, (t < 15 && ((frameNo>>3)&1)) ? 'r' : 'x', 1);
+  text("SC "+shift.score, 4, 12, 'x', 1);
   const kmh = Math.abs(bus.v)*3.6;
-  text((kmh<10?" ":"")+(kmh|0)+" KM/H", 4, 5, 'x', 1);
-  const bp = busS();
-  text((bp.s|0)+"/"+(TOTAL_S|0)+" M", 62, 5, 'X', 1);
-  if(bus.v < -0.2) text("REV", 118, 5, 'y', 1);
+  text((kmh|0)+" KMH", 76, 3, 'X', 1);
+  if(bus.v < -0.2) text("REV", 76, 12, 'y', 1);
 
-  // Clearance bars: left flank on the left, right flank on the right.
-  text("L", 196, 5, 'X', 1);
-  text("R", 276, 5, 'X', 1);
+  // Comfort is a multiplier on every fare, never a health bar.
+  text("CMF", 124, 12, 'X', 1);
+  const cf = shift.comfort;
+  rect(142, 12, 42, 5, 'X');
+  rect(142, 12, Math.max(1, 42*cf), 5, cf < 0.5 ? 'r' : (cf < 0.8 ? 'y' : 'e'));
+
+  const nx = nextStop();
+  if(nx){
+    const dd = Math.abs(nx.s - busS().s)|0;
+    text("STOP "+dd+"M", 124, 3, 'e', 1);
+  }
+
+  text("L", 196, 3, 'X', 1);
+  text("R", 276, 3, 'X', 1);
   for(const cfg of [{v:clearL, x:203}, {v:clearR, x:238}]){
     const frac = Math.max(0, Math.min(1, cfg.v/CLEAR_CAP));
     const k = cfg.v < 0.28 ? 'r' : (cfg.v < 0.75 ? 'y' : 'x');
-    rect(cfg.x, 5, 34, 5, 'X');
-    rect(cfg.x, 5, Math.max(1, 34*frac), 5, k);
+    rect(cfg.x, 3, 34, 5, 'X');
+    rect(cfg.x, 3, Math.max(1, 34*frac), 5, k);
   }
   if(squeezing){
     const g = Math.min(clearL, clearR);
-    text("GAP "+Math.round(g*100)+"CM", 140, 5, 'y', 1);
+    text("GAP "+Math.round(g*100)+"CM", 224, 12, 'y', 1);
     // Warning frame -- the squeeze wants to be felt at the screen edge.
     const on = ((frameNo>>2)&1) ? 'y' : 'h';
-    rect(0,15,W,1,on); rect(0,H-1,W,1,on); rect(0,15,1,H,on); rect(W-1,15,1,H,on);
+    rect(0,22,W,1,on); rect(0,H-1,W,1,on); rect(0,22,1,H,on); rect(W-1,22,1,H,on);
   }
   if(squeezeFlash > 0 && ((frameNo>>2)&1 || squeezeFlash < 0.7)){
     textC("SQUEEZE  "+Math.round(squeezeFlashVal*100)+"CM", H-24, 'y', 2);
@@ -886,6 +1002,7 @@ function drawHUD(){
 
 function render(){
   drawStreet();
+  for(const st of STOPS) drawParts(st.x, st.y, st.ang, stopParts(st));
   for(const b of bins){
     drawParts(b.x, b.y, b.ang, [[-0.36,-0.36,0.36,0.36,'n'],[-0.36,-0.36,-0.05,0.36,'N']]);
   }
@@ -910,7 +1027,20 @@ function render(){
   drawParts(bc.x, bc.y, bus.h, busParts());
 
   for(const p of sparks) rect(sx(p.x), sy(p.y), 1, 1, 's');
+  drawStopArrow();
+  if(shift.boardT > 0){
+    const c = busCentre(), bx = sx(c.x)|0, by = (sy(c.y)-17)|0;
+    rect(bx-15, by, 30, 3, 'X');
+    rect(bx-15, by, Math.max(1, 30*shift.boardT), 3, 'e');
+  }
   drawHUD();
+  if(shift.over){
+    rect(32,56,256,78,'a'); rect(34,58,252,74,'b');
+    textC("SHIFT OVER", 68, 'y', 2);
+    textC("SCORE "+shift.score, 88, 'x', 2);
+    textC(shift.served+" STOPS SERVED", 108, 'X', 1);
+    if((frameNo>>4)&1) textC("HORN OR TAP TO RESTART", 120, 'e', 1);
+  }
 }
 
 // ============================================================
@@ -961,6 +1091,8 @@ function sHorn(){ beep(233,0.42,"sawtooth",0.05); beep(311,0.42,"square",0.035);
 function sBump(i){ beep(90+Math.random()*40, Math.min(0.22,0.06+i*0.02), "sawtooth", 0.05); }
 function sBin(){ beep(320+Math.random()*260, 0.05, "square", 0.035); }
 function sChime(){ beep(880,0.07); setTimeout(()=>beep(1320,0.09),70); }
+function sServed(){ [660,880,1100].forEach((f,i)=>setTimeout(()=>beep(f,0.11),i*80)); }
+function sShiftEnd(){ [440,330,220].forEach((f,i)=>setTimeout(()=>beep(f,0.28,"sawtooth"),i*160)); }
 
 // ============================================================
 // Input
@@ -973,7 +1105,12 @@ function bindHold(id,key){
   el.addEventListener("pointerleave",off); el.addEventListener("pointercancel",off);
 }
 bindHold("up","up"); bindHold("down","down"); bindHold("left","left"); bindHold("right","right");
-function pressHorn(){ audioInit(); if(!input.horn){ input.horn=true; input.hornEdge=true; } }
+bindHold("doorsBtn","doors");
+function pressHorn(){
+  audioInit();
+  if(shift.over){ resetAll(); return; }
+  if(!input.horn){ input.horn=true; input.hornEdge=true; }
+}
 const hornBtn = document.getElementById("horn");
 if(hornBtn){
   hornBtn.addEventListener("pointerdown",e=>{ e.preventDefault(); pressHorn(); });
@@ -986,10 +1123,12 @@ window.addEventListener("keydown",e=>{
   if(KEYMAP[e.key]){ input[KEYMAP[e.key]]=true; e.preventDefault(); }
   if(e.key===" "){ if(!e.repeat) pressHorn(); e.preventDefault(); }
   if(e.key==="r"||e.key==="R") resetAll();
+  if(e.key==="Shift"||e.key==="e"||e.key==="E"){ input.doors = true; e.preventDefault(); }
 });
 window.addEventListener("keyup",e=>{
   if(KEYMAP[e.key]){ input[KEYMAP[e.key]]=false; e.preventDefault(); }
   if(e.key===" ") input.horn=false;
+  if(e.key==="Shift"||e.key==="e"||e.key==="E") input.doors = false;
 });
 
 const palBtn = document.getElementById("palBtn");
@@ -1022,7 +1161,9 @@ document.addEventListener("dblclick",e=>e.preventDefault());
 // Boot / reset -- restarting must be near-instant.
 // ============================================================
 function resetAll(){
-  buildWorld(); resetBus(); spawnCar();
+  buildWorld(); buildStops(); resetBus(); spawnCar();
+  shift.time = SHIFT_START; shift.score = 0; shift.served = 0;
+  shift.comfort = 1; shift.boardT = 0; shift.flash = 0; shift.over = false;
   sparks.length = 0; shake = 0; hitCount = 0;
   squeezing = false; squeezeFlash = 0; squeezeDirty = false; timeScale = 1;
   clearL = clearR = CLEAR_CAP;
@@ -1046,6 +1187,7 @@ if(typeof window!=="undefined" && window.__busHook){
     obstacles:()=>obstacles, bins:()=>bins, segs:()=>SEGS, totalS:()=>TOTAL_S,
     project, pathPoint, toWorld, busCentre, busOBB, busLocal, busS, freeInterval,
     clearances:()=>({l:clearL, r:clearR}), squeezing:()=>squeezing,
+    shift, stops:()=>STOPS, nextStop, stopFit, buildStops,
     hits:()=>hitCount, single:()=>update(), step:n=>{ for(let i=0;i<(n||60);i++) update(); },
     render, reset:resetAll, spawnCar,
     setPal:p=>{ palMode = p; }, getPal:()=>palMode,
@@ -1054,7 +1196,8 @@ if(typeof window!=="undefined" && window.__busHook){
     place:(s,q,dh)=>{ const w = toWorld(s,q); bus.rx=w.x; bus.ry=w.y; bus.h=w.ang+(dh||0); bus.v=0;
                       bus.steerNorm=0; bus.steer=0; updateCam(0,true); },
     honk:()=>{ input.hornEdge = true; },
-    consts:{BUS_L,BUS_W,WB,FRONT_OH,REAR_OH,STEER_MAX,PPM,W,H,NEED_BOTH,CLEAR_CAP}
+    consts:{BUS_L,BUS_W,WB,FRONT_OH,REAR_OH,STEER_MAX,PPM,W,H,NEED_BOTH,CLEAR_CAP,
+            VARIANT:"shift", SHIFT_START, STOP_BONUS}
   });
 }
 

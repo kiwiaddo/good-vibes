@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0f380f">
-<title>ONE STREET · Good Vibes Arcade</title>
+<title>ONE STREET / CHASE · Good Vibes Arcade</title>
 <style>
   :root{ --c0:#0f380f; --c1:#306230; --c2:#8bac0f; --c3:#9bbc0f; }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -75,9 +75,9 @@
       <button class="chip" id="resetBtn">RESET</button>
     </div>
     <div id="variants">
-      <a class="vchip on" href="bus.html">RIGID</a>
+      <a class="vchip" href="bus.html">RIGID</a>
       <a class="vchip" href="bus-bendy.html">BENDY</a>
-      <a class="vchip" href="bus-chase.html">CHASE</a>
+      <a class="vchip on" href="bus-chase.html">CHASE</a>
       <a class="vchip" href="bus-shift.html">SHIFT</a>
     </div>
 
@@ -90,7 +90,7 @@
       </div>
       <button class="btn" id="horn">HORN</button>
     </div>
-    <div id="hint">PROTOTYPE &middot; NO SCORE, NO TIMER, NO PASSENGERS<br>Gate test: is threading this street twice in a row fun on its own?</div>
+    <div id="hint">VARIANT: CHASE CAM &middot; the view rotates with the bus<br>Same bus, same street &mdash; only the camera differs from RIGID.</div>
   </div>
 
 <script>
@@ -609,25 +609,43 @@ function collide(){
 }
 
 // ============================================================
-// Camera -- world-fixed (never rotates), critically damped, with a
-// look-ahead that is capped so the tail can never leave the screen.
+// Camera -- ROTATES so the bus always points up-screen.
+// Note the cost this forces: "forward" becomes the SHORT screen axis, so
+// look-ahead caps at ~9 m where the world-fixed camera reaches up to 20 m.
 // ============================================================
-let camX = 0, camY = 0, camVX = 0, camVY = 0;
+let camX = 0, camY = 0, camVX = 0, camVY = 0, camA = 0, camAV = 0;
+const MAX_LOOK_CHASE = 9;
 function updateCam(dt, snap){
   const p = busCentre();
+  let want = -(bus.h + Math.PI/2);
+  while(want - camA >  Math.PI) want -= 2*Math.PI;
+  while(want - camA < -Math.PI) want += 2*Math.PI;
   const c = Math.cos(bus.h), s = Math.sin(bus.h);
-  const halfAlong = ((W/2)*Math.abs(c) + (H/2)*Math.abs(s)) / PPM;
-  const maxLook = Math.max(0, halfAlong - (BUS_L/2) - 2.5);
-  const look = Math.min(Math.abs(bus.v) * 1.15, maxLook, 20);
+  const look = Math.min(2 + Math.abs(bus.v)*0.75, MAX_LOOK_CHASE);
   const tx = p.x + c*look, ty = p.y + s*look;
-  if(snap){ camX = tx; camY = ty; camVX = camVY = 0; return; }
+  const spin = Math.min(1, Math.abs(bus.v)/2.5);   // hold still when stopped
+  if(snap){ camX = tx; camY = ty; camA = want; camVX = camVY = camAV = 0; return; }
   const w = 6.5;
   camVX += (-2*w*camVX - w*w*(camX-tx))*dt; camX += camVX*dt;
   camVY += (-2*w*camVY - w*w*(camY-ty))*dt; camY += camVY*dt;
+  const wa = 5.0, aim = camA + (want - camA)*spin;
+  camAV += (-2*wa*camAV - wa*wa*(camA-aim))*dt; camA += camAV*dt;
 }
 let shakeX = 0, shakeY = 0;
-function sx(x){ return (x-camX)*PPM + W/2 + shakeX; }
-function sy(y){ return (y-camY)*PPM + H/2 + shakeY; }
+// World -> screen now carries a rotation, so every angle handed to fillOBB
+// must be shifted by camA too.
+function sx(x, y){
+  const c = Math.cos(camA), s = Math.sin(camA);
+  return ((x-camX)*PPM)*c - ((y-camY)*PPM)*s + W/2 + shakeX;
+}
+function sy(x, y){
+  const c = Math.cos(camA), s = Math.sin(camA);
+  return ((x-camX)*PPM)*s + ((y-camY)*PPM)*c + H/2 + shakeY;
+}
+function rotCS(dx,dy){
+  const c = Math.cos(camA), s = Math.sin(camA);
+  return [dx*c - dy*s, dx*s + dy*c];
+}
 
 // ============================================================
 // Update
@@ -724,8 +742,8 @@ function update(){
 // Render
 // ============================================================
 function drawParts(x,y,ang,parts){
-  const c = Math.cos(ang), s = Math.sin(ang);
-  const px = sx(x), py = sy(y);
+  const c = Math.cos(ang+camA), s = Math.sin(ang+camA);
+  const px = sx(x,y), py = sy(x,y);
   for(const p of parts){
     const lcx = (p[0]+p[2])/2, lcy = (p[1]+p[3])/2;
     const wx = px + (lcx*c + lcy*s)*PPM;
@@ -787,24 +805,24 @@ function vanParts(blink){
 function drawStreet(){
   ctx.fillStyle = col('b'); ctx.fillRect(0,0,W,H);
   // Building texture: a coarse window grid, skipped anywhere near the corridor.
-  const x0 = camX - (W/2)/PPM, y0 = camY - (H/2)/PPM;
-  for(let gx = Math.floor(x0/4)*4; gx < x0 + W/PPM + 4; gx += 4){
-    for(let gy = Math.floor(y0/4)*4; gy < y0 + H/PPM + 4; gy += 4){
+  const R = Math.hypot(W/2, H/2)/PPM + 4;
+  for(let gx = Math.floor((camX-R)/4)*4; gx < camX + R; gx += 4){
+    for(let gy = Math.floor((camY-R)/4)*4; gy < camY + R; gy += 4){
       const pr = project(gx,gy);
       if(Math.abs(pr.q) < pr.hw + 1.6) continue;
-      rect(sx(gx), sy(gy), 1.4*PPM, 1.4*PPM, 'B');
+      rect(sx(gx,gy), sy(gx,gy), 1.4*PPM, 1.4*PPM, 'B');
     }
   }
   for(const g of SEGS){
     const mx = (g.ax+g.bx)/2, my = (g.ay+g.by)/2;
     const hw = (g.hw0+g.hw1)/2;
-    const c = g.dx, s = g.dy;
-    fillOBB(sx(mx), sy(my), c, s, (g.len/2+0.35)*PPM, hw*PPM, 'p');
-    fillOBB(sx(mx), sy(my), c, s, (g.len/2+0.35)*PPM, (hw-PAVE)*PPM, 'd');
+    const [c,s] = rotCS(g.dx, g.dy);
+    fillOBB(sx(mx,my), sy(mx,my), c, s, (g.len/2+0.35)*PPM, hw*PPM, 'p');
+    fillOBB(sx(mx,my), sy(mx,my), c, s, (g.len/2+0.35)*PPM, (hw-PAVE)*PPM, 'd');
     // Kerb lines
     for(const sg of [1,-1]){
       const kx = mx + g.nx*sg*(hw-PAVE), ky = my + g.ny*sg*(hw-PAVE);
-      fillOBB(sx(kx), sy(ky), c, s, (g.len/2+0.35)*PPM, 0.11*PPM, 'k');
+      fillOBB(sx(kx,ky), sy(kx,ky), c, s, (g.len/2+0.35)*PPM, 0.11*PPM, 'k');
     }
   }
   // Dashed centre line
@@ -812,12 +830,14 @@ function drawStreet(){
     const p = pathPoint(s), q = pathPoint(Math.min(TOTAL_S, s+2.6));
     const mx = (p.x+q.x)/2, my = (p.y+q.y)/2;
     const dx = q.x-p.x, dy = q.y-p.y, L = Math.hypot(dx,dy) || 1;
-    fillOBB(sx(mx), sy(my), dx/L, dy/L, (L/2)*PPM, 0.09*PPM, 'l');
+    const [cc,ss] = rotCS(dx/L, dy/L);
+    fillOBB(sx(mx,my), sy(mx,my), cc, ss, (L/2)*PPM, 0.09*PPM, 'l');
   }
   // End walls
   for(const s of [0, TOTAL_S]){
     const p = pathPoint(s);
-    fillOBB(sx(p.x), sy(p.y), p.dx, p.dy, 0.4*PPM, p.hw*PPM, 'B');
+    const [wc,ws] = rotCS(p.dx, p.dy);
+    fillOBB(sx(p.x,p.y), sy(p.x,p.y), wc, ws, 0.4*PPM, p.hw*PPM, 'B');
   }
 }
 
@@ -836,7 +856,7 @@ function drawGhost(){
     const a = -REAR_OH;
     const lx = rx + a*c + BUS_HW*s, ly = ry + a*s - BUS_HW*c;
     const rx2 = rx + a*c - BUS_HW*s, ry2 = ry + a*s + BUS_HW*c;
-    if(pL){ dline(sx(pL.x),sy(pL.y),sx(lx),sy(ly),'e',2); dline(sx(pR.x),sy(pR.y),sx(rx2),sy(ry2),'e',2); }
+    if(pL){ dline(sx(pL.x,pL.y),sy(pL.x,pL.y),sx(lx,ly),sy(lx,ly),'e',2); dline(sx(pR.x,pR.y),sy(pR.x,pR.y),sx(rx2,ry2),sy(rx2,ry2),'e',2); }
     pL = {x:lx,y:ly}; pR = {x:rx2,y:ry2};
   }
   // Final pose outline
@@ -847,7 +867,7 @@ function drawGhost(){
   const order = [cor[0],cor[1],cor[3],cor[2]];
   for(let i=0;i<4;i++){
     const A = order[i], B = order[(i+1)%4];
-    dline(sx(A.x),sy(A.y),sx(B.x),sy(B.y),'e',3);
+    dline(sx(A.x,A.y),sy(A.x,A.y),sx(B.x,B.y),sy(B.x,B.y),'e',3);
   }
 }
 
@@ -901,7 +921,7 @@ function render(){
                cp.push([-2.1,0.5,-1.5,0.9,'h']); cp.push([1.5,0.5,2.1,0.9,'h']); }
   drawParts(car.x, car.y, car.ang, cp);
   if(car.mode === "wait" && ((frameNo>>3)&1)){
-    text("!", sx(car.x)-1, sy(car.y)-14, 'y', 2);
+    text("!", sx(car.x,car.y)-1, sy(car.x,car.y)-14, 'y', 2);
   }
 
   if(showGhost) drawGhost();
@@ -909,7 +929,7 @@ function render(){
   const bc = busCentre();
   drawParts(bc.x, bc.y, bus.h, busParts());
 
-  for(const p of sparks) rect(sx(p.x), sy(p.y), 1, 1, 's');
+  for(const p of sparks) rect(sx(p.x,p.y), sy(p.x,p.y), 1, 1, 's');
   drawHUD();
 }
 
@@ -1048,13 +1068,14 @@ if(typeof window!=="undefined" && window.__busHook){
     clearances:()=>({l:clearL, r:clearR}), squeezing:()=>squeezing,
     hits:()=>hitCount, single:()=>update(), step:n=>{ for(let i=0;i<(n||60);i++) update(); },
     render, reset:resetAll, spawnCar,
-    setPal:p=>{ palMode = p; }, getPal:()=>palMode,
+    setPal:p=>{ palMode = p; }, getPal:()=>palMode, camA:()=>camA,
     setGhost:b=>{ showGhost = b; },
     setNoclip:b=>{ noClip = b; },
     place:(s,q,dh)=>{ const w = toWorld(s,q); bus.rx=w.x; bus.ry=w.y; bus.h=w.ang+(dh||0); bus.v=0;
                       bus.steerNorm=0; bus.steer=0; updateCam(0,true); },
     honk:()=>{ input.hornEdge = true; },
-    consts:{BUS_L,BUS_W,WB,FRONT_OH,REAR_OH,STEER_MAX,PPM,W,H,NEED_BOTH,CLEAR_CAP}
+    consts:{BUS_L,BUS_W,WB,FRONT_OH,REAR_OH,STEER_MAX,PPM,W,H,NEED_BOTH,CLEAR_CAP,
+            VARIANT:"chase", MAX_LOOK:MAX_LOOK_CHASE}
   });
 }
 

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0f380f">
-<title>ONE STREET · Good Vibes Arcade</title>
+<title>ONE STREET / BENDY · Good Vibes Arcade</title>
 <style>
   :root{ --c0:#0f380f; --c1:#306230; --c2:#8bac0f; --c3:#9bbc0f; }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -75,8 +75,8 @@
       <button class="chip" id="resetBtn">RESET</button>
     </div>
     <div id="variants">
-      <a class="vchip on" href="bus.html">RIGID</a>
-      <a class="vchip" href="bus-bendy.html">BENDY</a>
+      <a class="vchip" href="bus.html">RIGID</a>
+      <a class="vchip on" href="bus-bendy.html">BENDY</a>
       <a class="vchip" href="bus-chase.html">CHASE</a>
       <a class="vchip" href="bus-shift.html">SHIFT</a>
     </div>
@@ -90,7 +90,7 @@
       </div>
       <button class="btn" id="horn">HORN</button>
     </div>
-    <div id="hint">PROTOTYPE &middot; NO SCORE, NO TIMER, NO PASSENGERS<br>Gate test: is threading this street twice in a row fun on its own?</div>
+    <div id="hint">VARIANT: BENDY BUS &middot; 18 m articulated<br>Same street, same camera &mdash; only the vehicle differs from RIGID.</div>
   </div>
 
 <script>
@@ -316,14 +316,18 @@ function buildWorld(){
 // The bus. Bicycle model driven from the REAR AXLE, with real overhangs so
 // the tail sweeps outward opposite the turn. That sweep is the whole game.
 // ============================================================
-const BUS_L = 12.0, BUS_W = 2.55, WB = 6.0, FRONT_OH = 2.5, REAR_OH = 3.5;
+const BUS_L = 11.0, BUS_W = 2.55, WB = 5.5, FRONT_OH = 2.5, REAR_OH = 3.0;
+// Articulation: the trailer hangs off a hitch just behind the front section's
+// tail. It CUTS IN through bends while the front section's tail swings OUT --
+// two opposite behaviours to fight at once, from one steering input.
+const HITCH_OFF = 2.9, TRAIL_L = 7.0, TRAIL_WB = 4.6, JACK = 0.87;
 const BUS_HW = BUS_W/2;
 const STEER_MAX = 0.733;          // ~42 deg -> ~22 m kerb-to-kerb circle
 const V_MAX = 14.0, V_REV = 4.0;  // m/s
 const ACCEL = 1.9, BRAKE = 4.2, DRAG = 0.55;
 
 const bus = {
-  rx:0, ry:0, h:0, v:0,
+  rx:0, ry:0, h:0, th:0, v:0,
   steer:0, steerNorm:0,
   scrapes:[],      // permanent decals: {a, side}
   bump:0
@@ -335,6 +339,24 @@ function busLocal(a,b){
   return { x:bus.rx + a*c + b*s, y:bus.ry + a*s - b*c };
 }
 function busCentre(){ return busLocal(WB + FRONT_OH - BUS_L/2, 0); }
+function hitchPos(){ return busLocal(-HITCH_OFF, 0); }
+function trailerCentre(){
+  const p = hitchPos();
+  return { x:p.x - (TRAIL_L/2)*Math.cos(bus.th), y:p.y - (TRAIL_L/2)*Math.sin(bus.th) };
+}
+function trailerOBB(){
+  const c = trailerCentre();
+  return { x:c.x, y:c.y, ang:bus.th, hl:TRAIL_L/2, hw:BUS_HW };
+}
+// Whole-rig centre, so the camera frames all 18 m rather than just the cab.
+function rigCentre(){ return busLocal((WB+FRONT_OH - (HITCH_OFF+TRAIL_L))/2, 0); }
+function wrapPi(a){ while(a >  Math.PI) a -= 2*Math.PI; while(a < -Math.PI) a += 2*Math.PI; return a; }
+function artAngle(){ return wrapPi(bus.h - bus.th); }
+function clampJack(){
+  const d = artAngle();
+  if(d >  JACK) bus.th = bus.h - JACK;
+  if(d < -JACK) bus.th = bus.h + JACK;
+}
 function busOBB(){
   const p = busCentre();
   return { x:p.x, y:p.y, ang:bus.h, hl:BUS_L/2, hw:BUS_HW };
@@ -342,7 +364,7 @@ function busOBB(){
 
 function resetBus(){
   const w = toWorld(8, 2.0);
-  bus.rx = w.x; bus.ry = w.y; bus.h = w.ang; bus.v = 0;
+  bus.rx = w.x; bus.ry = w.y; bus.h = w.ang; bus.th = w.ang; bus.v = 0;
   bus.steer = 0; bus.steerNorm = 0; bus.scrapes.length = 0; bus.bump = 0;
 }
 
@@ -517,13 +539,21 @@ function blockedAt(px,py){
   return false;
 }
 function probeSide(sign){
-  const c = Math.cos(bus.h), s = Math.sin(bus.h);
   let best = CLEAR_CAP;
-  for(const a of [-REAR_OH+0.4, 0, 2.5, 5.5, WB+FRONT_OH-0.4]){
-    const ox = bus.rx + a*c, oy = bus.ry + a*s;
-    for(let d=0; d<=CLEAR_CAP; d+=0.12){
-      const b = sign*(BUS_HW + d);
-      if(blockedAt(ox + b*s, oy - b*c)){ if(d < best) best = d; break; }
+  const frames = [
+    { ox:bus.rx, oy:bus.ry, c:Math.cos(bus.h), s:Math.sin(bus.h),
+      offs:[-REAR_OH+0.4, 0, 2.5, WB+FRONT_OH-0.4] }
+  ];
+  const H = hitchPos();
+  frames.push({ ox:H.x, oy:H.y, c:Math.cos(bus.th), s:Math.sin(bus.th),
+                offs:[-0.6, -TRAIL_L/2, -TRAIL_L+0.4] });
+  for(const f of frames){
+    for(const a of f.offs){
+      const ox = f.ox + a*f.c, oy = f.oy + a*f.s;
+      for(let d=0; d<=CLEAR_CAP; d+=0.12){
+        const b = sign*(BUS_HW + d);
+        if(blockedAt(ox + b*f.s, oy - b*f.c)){ if(d < best) best = d; break; }
+      }
     }
   }
   return best;
@@ -561,6 +591,44 @@ function resolveHit(nx,ny,depth,px,py){
     squeezeDirty = true;
   }
   bus.bump = Math.max(bus.bump, Math.min(1, impact/6));
+}
+// A shove on the trailer swings it about the hitch rather than sliding the
+// whole rig sideways.
+function resolveTrailerHit(nx,ny,depth,px,py){
+  const ct = Math.cos(bus.th), st = Math.sin(bus.th);
+  const side  = nx*st - ny*ct;              // component along trailer-left
+  const along = Math.abs(nx*ct + ny*st);
+  bus.th += Math.max(-0.07, Math.min(0.07, side*depth/(TRAIL_L*0.5)));
+  bus.rx += nx*depth*0.55; bus.ry += ny*depth*0.55;
+  const impact = Math.abs(bus.v)*(0.25 + along);
+  bus.v *= along > 0.55 ? 0.5 : 0.93;
+  if(impact > 0.7){
+    shake = Math.min(4.5, shake + impact*0.5);
+    addSparks(px,py,3 + (impact|0)); sBump(impact); hitCount++; squeezeDirty = true;
+  }
+  clampJack();
+}
+function collideTrailer(){
+  const T = trailerOBB();
+  for(const o of obstacles){
+    const m = satOBB(T,o);
+    if(m) resolveTrailerHit(m.nx, m.ny, m.depth, (T.x+o.x)/2, (T.y+o.y)/2);
+  }
+  const co = carOBB();
+  const mc = satOBB(T,co);
+  if(mc) resolveTrailerHit(mc.nx, mc.ny, mc.depth, (T.x+co.x)/2, (T.y+co.y)/2);
+  const ct = Math.cos(bus.th), st = Math.sin(bus.th);
+  for(const a of [-TRAIL_L/2, 0, TRAIL_L/2]){
+    for(const b of [-BUS_HW, BUS_HW]){
+      const px = T.x + a*ct + b*st, py = T.y + a*st - b*ct;
+      const pr = project(px,py);
+      const over = Math.abs(pr.q) - pr.hw;
+      if(over > 0){
+        const p = pathPoint(pr.s), sgn = pr.q > 0 ? 1 : -1;
+        resolveTrailerHit(-p.nx*sgn, -p.ny*sgn, over, px, py);
+      }
+    }
+  }
 }
 function collide(){
   const A = busOBB();
@@ -606,6 +674,7 @@ function collide(){
       if(Math.abs(bus.v) > 1.2){ sBin(); }
     }
   }
+  collideTrailer();
 }
 
 // ============================================================
@@ -614,10 +683,11 @@ function collide(){
 // ============================================================
 let camX = 0, camY = 0, camVX = 0, camVY = 0;
 function updateCam(dt, snap){
-  const p = busCentre();
+  const p = rigCentre();
   const c = Math.cos(bus.h), s = Math.sin(bus.h);
   const halfAlong = ((W/2)*Math.abs(c) + (H/2)*Math.abs(s)) / PPM;
-  const maxLook = Math.max(0, halfAlong - (BUS_L/2) - 2.5);
+  const RIG_HALF = (WB + FRONT_OH + HITCH_OFF + TRAIL_L)/2;
+  const maxLook = Math.max(0, halfAlong - RIG_HALF - 2.0);
   const look = Math.min(Math.abs(bus.v) * 1.15, maxLook, 20);
   const tx = p.x + c*look, ty = p.y + s*look;
   if(snap){ camX = tx; camY = ty; camVX = camVY = 0; return; }
@@ -665,9 +735,15 @@ function update(){
   if(bus.v > V_MAX) bus.v = V_MAX;
   if(bus.v < -V_REV) bus.v = -V_REV;
 
+  const omega = bus.v*Math.tan(bus.steer)/WB;
   bus.rx += bus.v*dt*Math.cos(bus.h);
   bus.ry += bus.v*dt*Math.sin(bus.h);
-  bus.h  += bus.v*dt*Math.tan(bus.steer)/WB;
+  bus.h  += omega*dt;
+  // Trailer axle is constrained to travel along its own heading; solving that
+  // gives the standard articulated rate, with the hitch offset term included.
+  const dA = artAngle();
+  bus.th += ((bus.v*Math.sin(dA) - HITCH_OFF*omega*Math.cos(dA))/TRAIL_WB)*dt;
+  clampJack();
 
   if(input.hornEdge){
     input.hornEdge = false;
@@ -737,26 +813,37 @@ function drawParts(x,y,ang,parts){
 function busParts(){
   const foldL = clearL < 0.45, foldR = clearR < 0.45;
   const P = [
-    [-6,-1.275, 6,1.275,'u'],
-    [-6, 0.72,  6,1.275,'U'], [-6,-1.275, 6,-0.72,'U'],
-    [-6,-1.275,-5.6,1.275,'U'],
-    [ 4.5,-1.05, 5.6,1.05,'g'],
-    [-5.6,-0.95,-4.9,0.95,'G'],
-    [-4.4,-1.2, 3.9,-0.86,'g'], [-4.4,0.86, 3.9,1.2,'g'],
-    [ 5.62,-0.8, 5.98,0.8,'h'],
-    [ 5.6,-1.2, 6.0,-0.85,'s'], [5.6,0.85, 6.0,1.2,'s'],
-    [-6.0,-1.2,-5.7,-0.85,'r'], [-6.0,0.85,-5.7,1.2,'r'],
-    [-3.3,-1.275,-1.7,-1.02,'t'], [-3.3,1.02,-1.7,1.275,'t'],
-    [ 2.7,-1.275, 4.1,-1.02,'t'], [ 2.7,1.02, 4.1,1.275,'t'],
-    [ 0.6,-1.275, 0.75,1.275,'U'], [3.0,-1.275, 3.15,1.275,'U']
+    [-5.5,-1.275, 5.5,1.275,'u'],
+    [-5.5, 0.72,  5.5,1.275,'U'], [-5.5,-1.275, 5.5,-0.72,'U'],
+    [-5.5,-1.275,-5.1,1.275,'t'],                            // bellows face
+    [ 4.0,-1.05, 5.1,1.05,'g'],
+    [-3.9,-1.2, 3.4,-0.86,'g'], [-3.9,0.86, 3.4,1.2,'g'],
+    [ 5.12,-0.8, 5.48,0.8,'h'],
+    [ 5.1,-1.2, 5.5,-0.85,'s'], [5.1,0.85, 5.5,1.2,'s'],
+    [-3.2,-1.275,-1.8,-1.02,'t'], [-3.2,1.02,-1.8,1.275,'t'],
+    [ 2.3,-1.275, 3.7,-1.02,'t'], [ 2.3,1.02, 3.7,1.275,'t'],
+    [ 0.4,-1.275, 0.55,1.275,'U']
   ];
-  P.push([5.0, foldL?1.28:1.30, 5.35, foldL?1.55:1.95, 'm']);
-  P.push([5.0, foldR?-1.55:-1.95, 5.35, foldR?-1.28:-1.30, 'm']);
+  P.push([4.5, foldL?1.28:1.30, 4.85, foldL?1.55:1.95, 'm']);
+  P.push([4.5, foldR?-1.55:-1.95, 4.85, foldR?-1.28:-1.30, 'm']);
   for(const sc of bus.scrapes){
-    const a = Math.max(-5.8, Math.min(5.8, sc.a - 2.5));
+    const a = Math.max(-5.3, Math.min(5.3, sc.a - 2.5));
     P.push([a-0.35, sc.side>0?1.05:-1.275, a+0.35, sc.side>0?1.275:-1.05, 'U']);
   }
   return P;
+}
+// Trailer local frame: hitch at +3.5, tail at -3.5, axle at -1.1.
+function trailerParts(){
+  return [
+    [-3.5,-1.275, 3.5,1.275,'u'],
+    [-3.5, 0.72,  3.5,1.275,'U'], [-3.5,-1.275, 3.5,-0.72,'U'],
+    [ 3.1,-1.275, 3.5,1.275,'t'],                            // bellows face
+    [-3.4,-1.2, 2.5,-0.86,'g'], [-3.4,0.86, 2.5,1.2,'g'],
+    [-3.5,-0.95,-2.95,0.95,'G'],
+    [-3.5,-1.2,-3.2,-0.85,'r'], [-3.5,0.85,-3.2,1.2,'r'],
+    [-1.8,-1.275,-0.4,-1.02,'t'], [-1.8,1.02,-0.4,1.275,'t'],
+    [ 1.2,-1.275, 1.35,1.275,'U']
+  ];
 }
 function carParts(tint, shade, lit){
   const P = [
@@ -824,26 +911,35 @@ function drawStreet(){
 function drawGhost(){
   // Project the bicycle model forward and trace where the TAIL corners go.
   // Tail swing is only fair if it is knowable.
-  let rx = bus.rx, ry = bus.ry, h = bus.h;
+  let rx = bus.rx, ry = bus.ry, h = bus.h, th = bus.th;
   const dir = bus.v < -0.2 ? -1 : 1;
   const v = Math.max(Math.abs(bus.v), 2.6) * dir;
   const N = 16, dt = 0.9/N;
   const tan = Math.tan(bus.steer);
   let pL = null, pR = null;
   for(let i=0;i<N;i++){
-    rx += v*dt*Math.cos(h); ry += v*dt*Math.sin(h); h += v*dt*tan/WB;
-    const c = Math.cos(h), s = Math.sin(h);
-    const a = -REAR_OH;
-    const lx = rx + a*c + BUS_HW*s, ly = ry + a*s - BUS_HW*c;
-    const rx2 = rx + a*c - BUS_HW*s, ry2 = ry + a*s + BUS_HW*c;
+    const om = v*tan/WB;
+    rx += v*dt*Math.cos(h); ry += v*dt*Math.sin(h);
+    const d = wrapPi(h - th);
+    th += ((v*Math.sin(d) - HITCH_OFF*om*Math.cos(d))/TRAIL_WB)*dt;
+    h  += om*dt;
+    const dd = wrapPi(h - th);
+    if(dd >  JACK) th = h - JACK;
+    if(dd < -JACK) th = h + JACK;
+    const c = Math.cos(h), s = Math.sin(h), ct = Math.cos(th), st = Math.sin(th);
+    const hx = rx - HITCH_OFF*c, hy = ry - HITCH_OFF*s;
+    const ax = hx - TRAIL_L*ct, ay = hy - TRAIL_L*st;
+    const lx = ax + BUS_HW*st, ly = ay - BUS_HW*ct;
+    const rx2 = ax - BUS_HW*st, ry2 = ay + BUS_HW*ct;
     if(pL){ dline(sx(pL.x),sy(pL.y),sx(lx),sy(ly),'e',2); dline(sx(pR.x),sy(pR.y),sx(rx2),sy(ry2),'e',2); }
     pL = {x:lx,y:ly}; pR = {x:rx2,y:ry2};
   }
-  // Final pose outline
-  const c = Math.cos(h), s = Math.sin(h);
+  // Final pose outline: the trailer, since that is the half you cannot see coming
+  const c = Math.cos(h), s = Math.sin(h), ct = Math.cos(th), st = Math.sin(th);
+  const hx2 = rx - HITCH_OFF*c, hy2 = ry - HITCH_OFF*s;
   const cor = [];
-  for(const a of [-REAR_OH, WB+FRONT_OH]) for(const b of [BUS_HW,-BUS_HW])
-    cor.push({x:rx + a*c + b*s, y:ry + a*s - b*c});
+  for(const a of [0, -TRAIL_L]) for(const b of [BUS_HW,-BUS_HW])
+    cor.push({x:hx2 + a*ct + b*st, y:hy2 + a*st - b*ct});
   const order = [cor[0],cor[1],cor[3],cor[2]];
   for(let i=0;i<4;i++){
     const A = order[i], B = order[(i+1)%4];
@@ -857,7 +953,9 @@ function drawHUD(){
   text((kmh<10?" ":"")+(kmh|0)+" KM/H", 4, 5, 'x', 1);
   const bp = busS();
   text((bp.s|0)+"/"+(TOTAL_S|0)+" M", 62, 5, 'X', 1);
-  if(bus.v < -0.2) text("REV", 118, 5, 'y', 1);
+  if(bus.v < -0.2) text("REV", 44, 5, 'y', 1);
+  const art = Math.abs(artAngle())*180/Math.PI;
+  text("ART "+(art|0), 108, 5, art > 42 ? 'r' : 'X', 1);
 
   // Clearance bars: left flank on the left, right flank on the right.
   text("L", 196, 5, 'X', 1);
@@ -906,6 +1004,8 @@ function render(){
 
   if(showGhost) drawGhost();
 
+  const tc = trailerCentre();
+  drawParts(tc.x, tc.y, bus.th, trailerParts());
   const bc = busCentre();
   drawParts(bc.x, bc.y, bus.h, busParts());
 
@@ -1045,16 +1145,19 @@ if(typeof window!=="undefined" && window.__busHook){
     bus, car, input,
     obstacles:()=>obstacles, bins:()=>bins, segs:()=>SEGS, totalS:()=>TOTAL_S,
     project, pathPoint, toWorld, busCentre, busOBB, busLocal, busS, freeInterval,
+    trailerOBB, trailerCentre, hitchPos, artAngle,
     clearances:()=>({l:clearL, r:clearR}), squeezing:()=>squeezing,
     hits:()=>hitCount, single:()=>update(), step:n=>{ for(let i=0;i<(n||60);i++) update(); },
     render, reset:resetAll, spawnCar,
     setPal:p=>{ palMode = p; }, getPal:()=>palMode,
     setGhost:b=>{ showGhost = b; },
     setNoclip:b=>{ noClip = b; },
-    place:(s,q,dh)=>{ const w = toWorld(s,q); bus.rx=w.x; bus.ry=w.y; bus.h=w.ang+(dh||0); bus.v=0;
+    place:(s,q,dh)=>{ const w = toWorld(s,q); bus.rx=w.x; bus.ry=w.y; bus.h=w.ang+(dh||0); bus.th=bus.h; bus.v=0;
                       bus.steerNorm=0; bus.steer=0; updateCam(0,true); },
     honk:()=>{ input.hornEdge = true; },
-    consts:{BUS_L,BUS_W,WB,FRONT_OH,REAR_OH,STEER_MAX,PPM,W,H,NEED_BOTH,CLEAR_CAP}
+    consts:{BUS_L,BUS_W,WB,FRONT_OH,REAR_OH,STEER_MAX,PPM,W,H,NEED_BOTH,CLEAR_CAP,
+            VARIANT:"bendy", HITCH_OFF, TRAIL_L, TRAIL_WB, JACK,
+            RIG_L:WB+FRONT_OH+HITCH_OFF+TRAIL_L}
   });
 }
 

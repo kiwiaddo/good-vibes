@@ -227,6 +227,7 @@ try {
       hook.input.right = !hook.input.left && Math.random() < 0.32;
       if(Math.random() < 0.05) hook.honk();
     }
+    if(hook.shift) hook.shift.time = 60;   // keep the soak actually simulating
     hook.single();
     if(i % 5 === 0) hook.render();
     const c = hook.busCentre();
@@ -241,6 +242,170 @@ try {
 ok("bus never escapes the corridor", escaped === 0,
    "worst overlap " + worstOver.toFixed(2) + " m");
 ok("no magenta across the whole run", magenta === 0, magenta + " magenta fills");
+
+// ------------------------------------------------------------------
+// Variant-specific mechanics
+// ------------------------------------------------------------------
+if(K.VARIANT === "bendy"){
+  section("10. BENDY: articulation");
+  hook.reset();
+  hook.place(14, 0.8, 0);
+  hook.input.right = true;
+  for(let i=0;i<70;i++){ hook.bus.v = 3.0; hook.bus.steerNorm = 1; hook.single(); }
+  hook.input.right = false;
+  const art = Math.abs(hook.artAngle());
+  ok("trailer articulates on a sustained turn", art > 0.2,
+     (art*180/Math.PI).toFixed(1) + " deg");
+  ok("rig is about 18 m", K.RIG_L > 17 && K.RIG_L < 19, K.RIG_L.toFixed(1) + " m");
+  ok("hitch sits ahead of the trailer axle (the condition for cutting in)",
+     K.HITCH_OFF < K.TRAIL_WB,
+     "hitch " + K.HITCH_OFF + " m vs trailer wheelbase " + K.TRAIL_WB + " m");
+
+  // Steady-state geometry needs open space and many seconds of arc, so run it
+  // free of collisions. The turn centre is exact for a bicycle model, so the
+  // radii can be compared directly rather than fitting a circle.
+  function trailerRadius(){
+    const b = hook.bus, R = K.WB/Math.tan(b.steer);
+    const cx = b.rx - R*Math.sin(b.h), cy = b.ry + R*Math.cos(b.h);
+    const H = hook.hitchPos();
+    const tax = H.x - K.TRAIL_WB*Math.cos(b.th), tay = H.y - K.TRAIL_WB*Math.sin(b.th);
+    return { R:Math.abs(R), rT:Math.hypot(tax-cx, tay-cy) };
+  }
+  hook.reset(); hook.setNoclip(true); hook.place(20, 0, 0);
+  hook.input.right = true;
+  let early = null;
+  for(let i=0;i<520;i++){
+    hook.bus.v = 3.0; hook.bus.steerNorm = 0.75; hook.single();
+    if(i === 60) early = trailerRadius();
+  }
+  hook.input.right = false;
+  const late = trailerRadius();
+  hook.setNoclip(false);
+  ok("trailer swings wide first, then pulls in", late.rT < early.rT - 0.5,
+     early.rT.toFixed(2) + " m -> " + late.rT.toFixed(2) + " m");
+  ok("settled trailer axle CUTS IN inside the drive axle", late.rT < late.R - 0.3,
+     "trailer " + late.rT.toFixed(2) + " m vs tractor " + late.R.toFixed(2) + " m");
+  const settled = Math.abs(hook.artAngle());
+  ok("settles short of the jack-knife stop at this lock", settled < K.JACK - 0.05,
+     (settled*180/Math.PI).toFixed(1) + " deg vs stop at " + (K.JACK*180/Math.PI).toFixed(0));
+
+  // Jack-knife limit must hold even under the worst input: reverse at full lock.
+  hook.reset(); hook.place(20, 0, 0);
+  let worstArt = 0;
+  for(let i=0;i<600;i++){
+    hook.input.down = true; hook.input.left = true; hook.single();
+    worstArt = Math.max(worstArt, Math.abs(hook.artAngle()));
+  }
+  hook.input.down = hook.input.left = false;
+  ok("jack-knife clamp holds under reverse at lock", worstArt <= K.JACK + 0.02,
+     "peak " + (worstArt*180/Math.PI).toFixed(1) + " deg, limit " + (K.JACK*180/Math.PI).toFixed(0));
+
+  // The trailer must be a real collision body, not decoration. hitCount only
+  // registers above an impact threshold, so check the response two ways:
+  // a static overlap gets resolved, and reversing into a car registers.
+  function inOBB(px,py,o){
+    const c = Math.cos(o.ang), s = Math.sin(o.ang);
+    const dx = px-o.x, dy = py-o.y;
+    return Math.abs(dx*c+dy*s) <= o.hl && Math.abs(dx*s-dy*c) <= o.hw;
+  }
+  hook.reset();
+  const o = hook.obstacles()[2];                     // mid-segment, clear of bends
+  const op = hook.project(o.x, o.y);
+  hook.setNoclip(true);
+  hook.place(op.s + K.HITCH_OFF + K.TRAIL_L/2, op.q, 0);   // trailer centre onto the car
+  hook.bus.v = 0; hook.single();
+  const before = inOBB(o.x, o.y, hook.trailerOBB());
+  hook.setNoclip(false);
+  for(let i=0;i<40;i++){ hook.bus.v = 0; hook.single(); }
+  const after = inOBB(o.x, o.y, hook.trailerOBB());
+  ok("test setup really does bury the trailer in a parked car", before);
+  ok("trailer is a collision body (overlap gets resolved)", before && !after);
+
+  hook.reset();
+  hook.place(op.s + K.HITCH_OFF + K.TRAIL_L + 5, op.q, 0);
+  const hb = hook.hits();
+  for(let i=0;i<200;i++){ hook.input.down = true; hook.single(); }
+  hook.input.down = false;
+  ok("reversing the trailer into a car registers an impact", hook.hits() > hb,
+     (hook.hits()-hb) + " hits");
+}
+
+if(K.VARIANT === "chase"){
+  section("10. CHASE: rotating camera");
+  hook.reset(); hook.place(20, 0, 0);
+  for(let i=0;i<200;i++){ hook.input.up = true; hook.single(); }
+  hook.input.up = false;
+  let err = hook.camA() - (-(hook.bus.h + Math.PI/2));
+  while(err >  Math.PI) err -= 2*Math.PI;
+  while(err < -Math.PI) err += 2*Math.PI;
+  ok("camera tracks the bus heading", Math.abs(err) < 0.12,
+     "off by " + (err*180/Math.PI).toFixed(1) + " deg");
+  const a0 = hook.camA();
+  for(let i=0;i<120;i++){ hook.bus.v = 0; hook.single(); }
+  ok("camera holds still when stopped (no spin on the spot)",
+     Math.abs(hook.camA() - a0) < 0.05);
+  ok("look-ahead is capped by the SHORT screen axis", K.MAX_LOOK <= 10,
+     K.MAX_LOOK + " m, vs up to 20 m world-fixed");
+}
+
+if(K.VARIANT === "shift"){
+  section("10. SHIFT: stops, clock, comfort");
+  hook.reset();
+  const stops = hook.stops();
+  ok("four stops placed", stops.length === 4);
+  let clashes = 0;
+  for(const st of stops)
+    for(const o of hook.obstacles())
+      if(Math.hypot(st.x-o.x, st.y-o.y) < 4.5) clashes++;
+  ok("no stop buried in a parked car", clashes === 0, clashes + " clashes");
+
+  // Serve one: pull alongside the kerb, hold the doors.
+  const st = stops[0];
+  hook.place(st.s, st.q > 0 ? st.q - 1.9 : st.q + 1.9, 0);
+  const t0 = hook.shift.time, sc0 = hook.shift.score;
+  hook.input.doors = true;
+  let servedIt = false;
+  for(let i=0;i<400;i++){ hook.bus.v = 0; hook.single(); if(st.served){ servedIt = true; break; } }
+  hook.input.doors = false;
+  ok("stop can be served by parking and opening the doors", servedIt);
+  ok("serving pays a fare", hook.shift.score > sc0, "+" + (hook.shift.score-sc0));
+  ok("serving buys time back", hook.shift.time > t0 - 5,
+     "clock " + t0.toFixed(1) + " -> " + hook.shift.time.toFixed(1));
+
+  // Parking badly must cost boarding time, or kerbside skill means nothing.
+  hook.reset();
+  const s2 = hook.stops()[1];
+  hook.place(s2.s, s2.q > 0 ? s2.q - 1.9 : s2.q + 1.9, 0);
+  const good = hook.stopFit(s2).time;
+  hook.place(s2.s, 0, 0.5);
+  const bad = hook.stopFit(s2).time;
+  ok("badly parked boards slower than well parked", bad > good + 0.2,
+     "good " + good.toFixed(2) + " s vs bad " + bad.toFixed(2) + " s");
+
+  // Comfort: falls under hard cornering, recovers, and never ends the run.
+  hook.reset(); hook.place(20, 0, 0);
+  const c0 = hook.shift.comfort;
+  hook.input.right = true;
+  for(let i=0;i<150;i++){ hook.bus.v = 11; hook.bus.steerNorm = 1; hook.single(); }
+  hook.input.right = false;
+  const cLow = hook.shift.comfort;
+  ok("hard cornering costs comfort", cLow < c0 - 0.05, c0.toFixed(2) + " -> " + cLow.toFixed(2));
+  ok("comfort never reaches zero (multiplier, not a fail state)", cLow > 0,
+     "floor " + cLow.toFixed(2));
+  ok("run still alive after wrecking comfort", hook.shift.over === false);
+  for(let i=0;i<400;i++){ hook.bus.v = 0; hook.single(); }
+  ok("comfort recovers when driven smoothly", hook.shift.comfort > cLow,
+     cLow.toFixed(2) + " -> " + hook.shift.comfort.toFixed(2));
+
+  // The clock is what ends a run.
+  hook.reset();
+  hook.shift.time = 0.5;
+  for(let i=0;i<120;i++) hook.single();
+  ok("clock running out ends the shift", hook.shift.over === true);
+  hook.reset();
+  ok("reset restarts the shift cleanly",
+     hook.shift.over === false && hook.shift.score === 0 && hook.shift.time === K.SHIFT_START);
+}
 
 // ------------------------------------------------------------------
 console.log("\n" + (failures ? "FAILED" : "OK") + " -- " + (checks-failures) + "/" + checks + " checks passed");

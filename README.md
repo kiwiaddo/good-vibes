@@ -83,10 +83,10 @@ and a shift clock with passenger stops.
 | Reset | RESET chip | R |
 | Doors (`bus-shift` only) | DOORS | Shift or E |
 
-The dotted outline ahead of the bus is the **swept path** — where the tail will
-end up if you hold the current steering. Tail swing is the whole game, so it is
-shown rather than hidden. HD adds a **ZOOM** chip and, on desktop, **F** for
-fullscreen.
+The trail ahead of the bus is the **swept path** — where the tail will end up
+if you hold the current steering (dotted in `bus.html`, a ribbon in HD). Tail
+swing is the whole game, so it is shown rather than hidden. HD adds a **ZOOM**
+chip and, on desktop, **F** for fullscreen.
 
 ## Deployment (GitHub Pages)
 

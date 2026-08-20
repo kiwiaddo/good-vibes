@@ -15,10 +15,17 @@ play well on phones (touch controls, responsive, scroll/zoom suppressed).
 | `index.html` | Arcade **hub / landing page**. Grid of game cards (pixel-art icon drawn on a tiny `<canvas>` + name) linking to each game. Add a future game = add one card + its own page. |
 | `donkey-kong.html` | The **Donkey Kong game**, fully self-contained (inline CSS + JS). |
 | `lemmings.html` | The **Lemmings game**, fully self-contained. Pixel-destructible terrain + the 8 classic skills, tuned for touch. |
+| `bus.html` | **ONE STREET** — the bus-driving gate test from `docs/bus-game-research.md` §15. 320×192, pixel-art. |
+| `bus-bendy.html`, `bus-chase.html`, `bus-shift.html` | Design variants of it: articulated bus / rotating camera / clock + stops. |
+| `bus-4k.html` | **ONE STREET HD** — same simulation, full-screen resolution-independent renderer. |
+| `docs/bus-game-research.md` | Research behind the bus game. |
+| `tools/` | Headless harness, physics-parity check, screenshot tool. |
 | `.github/workflows/deploy-pages.yml` | Deploys the repo root to GitHub Pages. |
 | `README.md` | Player-facing readme (controls, deploy notes). |
 
-There is no `src/`, no package.json, no test runner. Each game is one HTML file.
+There is no `src/`, no package.json and no bundler — each game is still one
+self-contained HTML file. `tools/` holds plain Node scripts with no dependencies;
+nothing in it ships to Pages.
 
 ## Running locally
 
@@ -114,9 +121,53 @@ palette is `color`. Key pieces:
 - Match the existing terse, single-IIFE style; integer pixel coordinates.
 - Preserve the color-key discipline so all three palettes keep working.
 
-## Verifying changes without a browser
+## bus.html / bus-4k.html architecture
 
-No browser/canvas/puppeteer is available in this environment. To smoke-test
+`bus.html` is one IIFE: a kinematic bicycle model driven from the **rear axle**
+with real overhangs (`FRONT_OH`/`REAR_OH`), so the tail sweeps outward opposite
+the turn — that sweep is the whole game. A polyline street with a varying
+half-width, SAT/OBB collision with minimum-translation resolution, ray-march
+clearance probes feeding the squeeze state, and an oncoming car that telegraphs,
+yields, backs into a bay, or waits for the horn.
+
+`bus-4k.html` **copies that simulation block verbatim** (bus.html lines 215–628
+and 631–721) and replaces only the renderer, so the two cannot drift:
+
+- `tools/parity-bus.js` drives both files with an identical scripted input
+  stream and an identical seeded `Math.random`, then compares 17 fields of
+  driving state every frame. The requirement is **exact** equality, not
+  approximate. Run it after any edit near the sim block.
+- All render-only state (particles, skid marks, eased zoom) lives in
+  `render(rdt)` and is driven by the frame delta, never by `update()`. Keep it
+  that way — the harness asserts that 400 `render()` calls move nothing.
+- Resolution is viewport-driven: `VW/VH` are CSS pixels, `PPM` is chosen so
+  every screen sees the same *world* framing (`VIEW_X_M` × `VIEW_Y_M`) and only
+  the resolution changes. On a portrait phone (`VH > VW*1.12`) the world is
+  turned a fixed quarter turn (`rot90`) so the street runs down the long axis;
+  `W/H` are the **logical** extents and swap, the HUD stays upright in `VW/VH`.
+- Buildings are fake-3D: the roof is the footprint translated away from the
+  camera, and the walls left exposed are the ones facing **toward** it.
+  `buildBlocks()` pushes each block out until no point of its inner face is
+  inside the corridor — the harness sweeps the whole street for intrusions.
+
+## Verifying changes
+
+`node tools/test-bus.js <file>` runs the shared harness (sections 1–9) plus a
+variant section chosen from `consts.VARIANT`. It stubs document/canvas/
+localStorage/rAF and drives the loop through `window.__busHook`. A `fillStyle`
+/`strokeStyle` setter flags `#ff00ff`, catching any colour key missing from
+`KEY_TONE`/`GBC`; `bus-4k` also asserts the two maps are exact mirrors.
+
+**A real browser IS available** in Claude Code on the web: Chromium lives at
+`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`. Use
+`node tools/shot-bus.js <game.html> <out.png> 1280x720 s=126 q=1.4 v=6.5` to
+screenshot any point on the street, then read the PNG. Two gotchas: headless
+clamps the window to a **500 px minimum width** (so a 390 px phone must be
+approximated by a matching aspect like 500×1082), and `--window-size` sets the
+*window*, not the viewport — 1280×720 yields a 1280×633 viewport, which puts a
+black band at the bottom of the shot that is not a bug.
+
+For the Game Boy titles, where no such page probe exists, smoke-test
 `donkey-kong.html`, extract the inline `<script>` and run it under Node with
 stubbed `document`/`canvas`/`localStorage`/`requestAnimationFrame`, driving a few
 thousand frames and asserting no exceptions. A `fillStyle` setter that flags

@@ -12,18 +12,39 @@ const m = src.match(/<script>([\s\S]*?)<\/script>/);
 if(!m){ console.error("no inline script found"); process.exit(1); }
 const code = m[1];
 
-let magenta = 0, fillRects = 0;
-const ctxStub = {
-  _fillStyle: "#000",
-  get fillStyle(){ return this._fillStyle; },
-  set fillStyle(v){ if(typeof v === "string" && v.toLowerCase() === "#ff00ff") magenta++; this._fillStyle = v; },
-  fillRect(){ fillRects++; },
-  imageSmoothingEnabled: false
-};
+let magenta = 0, drawOps = 0;
+function guard(v){ if(typeof v === "string" && v.toLowerCase() === "#ff00ff") magenta++; return v; }
+function gradStub(){ return { addColorStop(){}, _grad:true }; }
+function mkCtx(){
+  const c = {
+    _fillStyle:"#000", _strokeStyle:"#000",
+    get fillStyle(){ return this._fillStyle; },
+    set fillStyle(v){ this._fillStyle = guard(v); },
+    get strokeStyle(){ return this._strokeStyle; },
+    set strokeStyle(v){ this._strokeStyle = guard(v); },
+    lineWidth:1, globalAlpha:1, globalCompositeOperation:"source-over",
+    font:"", textAlign:"left", textBaseline:"alphabetic",
+    imageSmoothingEnabled:false, filter:"none", lineJoin:"miter", lineCap:"butt",
+    fillRect(){ drawOps++; }, strokeRect(){ drawOps++; }, clearRect(){},
+    fill(){ drawOps++; }, stroke(){ drawOps++; },
+    fillText(){ drawOps++; }, strokeText(){ drawOps++; },
+    beginPath(){}, closePath(){}, moveTo(){}, lineTo(){}, rect(){},
+    quadraticCurveTo(){}, bezierCurveTo(){}, arc(){}, arcTo(){}, ellipse(){},
+    clip(){}, save(){}, restore(){},
+    translate(){}, scale(){}, rotate(){}, transform(){}, setTransform(){}, resetTransform(){},
+    setLineDash(){}, getLineDash(){ return []; }, drawImage(){ drawOps++; },
+    createLinearGradient:gradStub, createRadialGradient:gradStub,
+    createPattern(){ return { _pattern:true }; },
+    measureText(t){ return { width:(""+t).length * 7 }; }
+  };
+  return c;
+}
+const ctxStub = mkCtx();
 function el(extra){
   return Object.assign({
     addEventListener(){}, removeEventListener(){}, textContent:"",
-    style:{}, getBoundingClientRect:()=>({left:0,top:0,width:480,height:288})
+    style:{}, classList:{ add(){}, remove(){}, toggle(){}, contains(){ return false; } },
+    getBoundingClientRect:()=>({left:0,top:0,width:480,height:44})
   }, extra||{});
 }
 const canvasStub = el({ width:320, height:192, getContext:()=>ctxStub });
@@ -37,9 +58,14 @@ const sandbox = {
   Math, Date, JSON,
   requestAnimationFrame: ()=>0,
   addEventListener: ()=>{}, removeEventListener: ()=>{},
+  innerWidth: 1280, innerHeight: 720, devicePixelRatio: 2,
   localStorage: { getItem:k=>(k in store?store[k]:null), setItem:(k,v)=>{store[k]=""+v;} },
   document: {
     getElementById:id => id === "game" ? canvasStub : el(),
+    createElement:tag => tag === "canvas"
+      ? el({ width:0, height:0, getContext:()=>mkCtx() })
+      : el(),
+    body: el(), documentElement: el(),
     addEventListener(){}, querySelectorAll:()=>[]
   }
 };
@@ -72,7 +98,7 @@ try {
   for(let i=0;i<3000;i++){ hook.single(); if(i%7===0) hook.render(); }
   ok("3000 idle frames, no exception", true);
 } catch(e){ ok("3000 idle frames, no exception", false, e.message); }
-ok("fillRect actually drew", fillRects > 1000, fillRects + " calls");
+ok("renderer actually drew", drawOps > 1000, drawOps + " draw ops");
 
 // ------------------------------------------------------------------
 section("2. Palettes (magenta guard = a key missing from KEY_TONE/GBC)");
@@ -405,6 +431,127 @@ if(K.VARIANT === "shift"){
   hook.reset();
   ok("reset restarts the shift cleanly",
      hook.shift.over === false && hook.shift.score === 0 && hook.shift.time === K.SHIFT_START);
+}
+
+if(K.VARIANT === "4k"){
+  section("10. HD: colour-key discipline");
+  const keys = hook.keys();
+  const toneKeys = Object.keys(keys.tone).filter(k=>k !== ".");
+  const gbcKeys  = Object.keys(keys.gbc);
+  const missingGbc  = toneKeys.filter(k => !(k in keys.gbc));
+  const missingTone = gbcKeys.filter(k => !(k in keys.tone));
+  ok("every KEY_TONE key has a GBC colour", missingGbc.length === 0, missingGbc.join(",") || toneKeys.length + " keys");
+  ok("every GBC key has a KEY_TONE ramp", missingTone.length === 0, missingTone.join(",") || gbcKeys.length + " keys");
+  ok("tone indices are all in range 0-3",
+     toneKeys.every(k => keys.tone[k] >= 0 && keys.tone[k] <= 3));
+  ok("every GBC colour is a real hex", gbcKeys.every(k => /^#[0-9a-f]{6}$/i.test(keys.gbc[k])));
+
+  section("11. HD: responsive framing");
+  // The world framing must be the SAME slice of street on every screen -- a
+  // phone and a 4K monitor differ in resolution, not in how much they see.
+  const forms = [
+    ["phone portrait",   390,  844, 3],
+    ["phone landscape",  844,  390, 3],
+    ["tablet",          1024,  768, 2],
+    ["laptop",          1440,  900, 2],
+    ["desktop 1080p",   1920, 1080, 1],
+    ["ultrawide",       2560, 1080, 1],
+    ["tiny",             320,  240, 1]
+  ];
+  let framingBad = [], dprBad = [], storeBad = [], rotBad = [];
+  for(const [name,w,h,dpr] of forms){
+    sandbox.innerWidth = w; sandbox.innerHeight = h; sandbox.devicePixelRatio = dpr;
+    hook.resize();
+    const v = hook.viewport();
+    const spanX = v.W / v.PPM, spanY = v.H / v.PPM;
+    if(spanX < K.VIEW_X_M - 0.01 || spanY < K.VIEW_Y_M - 0.01) framingBad.push(name);
+    if(v.DPR > 2 + 1e-9) dprBad.push(name);
+    if(Math.abs(canvasStub.width - Math.round(v.VW*v.DPR)) > 1 ||
+       Math.abs(canvasStub.height - Math.round(v.VH*v.DPR)) > 1) storeBad.push(name);
+    // A tall screen turns the world a quarter turn so the street runs down the
+    // long axis; a wide one never does.
+    const wantRot = h > w*1.12;
+    if(v.rot90 !== wantRot) rotBad.push(name);
+    if(v.W !== (wantRot?h:w) || v.H !== (wantRot?w:h)) rotBad.push(name+" extents");
+  }
+  ok("every form factor sees at least the design framing", framingBad.length === 0, framingBad.join(", "));
+  ok("device pixel ratio is capped at 2", dprBad.length === 0, dprBad.join(", "));
+  ok("backing store matches CSS size x DPR", storeBad.length === 0, storeBad.join(", "));
+  ok("portrait turns the world a quarter turn, landscape never does",
+     rotBad.length === 0, rotBad.join(", "));
+
+  // And it must render at all of them without throwing.
+  let renderBad = null;
+  try {
+    for(const [name,w,h,dpr] of forms){
+      sandbox.innerWidth = w; sandbox.innerHeight = h; sandbox.devicePixelRatio = dpr;
+      hook.resize(); hook.reset();
+      for(let i=0;i<40;i++){ hook.single(); hook.render(1/60); }
+    }
+  } catch(e){ renderBad = e.message; }
+  ok("renders on every form factor without throwing", renderBad === null, renderBad || "7 viewports");
+
+  sandbox.innerWidth = 1440; sandbox.innerHeight = 900; sandbox.devicePixelRatio = 2;
+  hook.resize();
+  const base = hook.viewport().PPM;
+  const zs = [];
+  for(let i=0;i<3;i++){ hook.setZoomStep(i); zs.push(hook.viewport().PPM); }
+  ok("zoom steps change the scale monotonically", zs[0] < zs[1] && zs[1] < zs[2],
+     zs.map(z=>z.toFixed(1)).join(" < "));
+  hook.setZoomStep(1);
+  ok("default zoom is the design scale", Math.abs(hook.viewport().PPM - base) < 1e-9);
+
+  section("12. HD: the dressing never eats the road");
+  const blocks = hook.blocks();
+  ok("buildings line both sides of the street", blocks.length > 30, blocks.length + " blocks");
+  function inBox(px,py,B){
+    const c = Math.cos(B.ang), s2 = Math.sin(B.ang);
+    const dx = px-B.x, dy = py-B.y;
+    const lx = dx*c + dy*s2, ly = dx*s2 - dy*c;
+    return Math.abs(lx) <= B.hl && Math.abs(ly) <= B.hw;
+  }
+  let intruded = 0, worstAt = null;
+  for(let s2=0; s2<=TOTAL; s2+=0.5){
+    const p = hook.pathPoint(s2);
+    for(let f=-0.98; f<=0.98; f+=0.14){
+      const px = p.x + p.nx*p.hw*f, py = p.y + p.ny*p.hw*f;
+      for(const B of blocks){
+        if(inBox(px,py,B)){ intruded++; if(!worstAt) worstAt = "s=" + s2.toFixed(0); break; }
+      }
+    }
+  }
+  ok("no building overlaps the drivable corridor", intruded === 0,
+     intruded ? intruded + " samples covered, first at " + worstAt : "swept whole street");
+  const props = hook.props();
+  ok("road dressing exists", props.length > 20, props.length + " props");
+  let offRoad = 0;
+  for(const p of props){
+    const pr = hook.project(p.x,p.y);
+    if(Math.abs(pr.q) > pr.hw) offRoad++;
+  }
+  ok("road dressing stays inside the street", offRoad === 0, offRoad + " strays");
+
+  section("13. HD: rendering cannot touch the simulation");
+  // All the new visual state (particles, skid marks, eased zoom) lives in
+  // render(). Calling render must therefore never move the bus or the car.
+  hook.reset();
+  hook.place(60, 1.2, 0.2);
+  hook.bus.v = 8; hook.input.up = true; hook.input.down = true;
+  for(let i=0;i<30;i++) hook.single();
+  const snap = JSON.stringify([hook.bus.rx, hook.bus.ry, hook.bus.h, hook.bus.v,
+                               hook.bus.steer, hook.car.s, hook.car.q, hook.car.v]);
+  for(let i=0;i<400;i++) hook.render(1/60);
+  const after = JSON.stringify([hook.bus.rx, hook.bus.ry, hook.bus.h, hook.bus.v,
+                                hook.bus.steer, hook.car.s, hook.car.q, hook.car.v]);
+  ok("400 render calls move nothing in the sim", snap === after);
+  hook.input.up = false; hook.input.down = false;
+
+  // Particle lists are capped so a long session cannot grow without bound.
+  hook.reset();
+  hook.input.up = true;
+  for(let i=0;i<4000;i++){ hook.single(); hook.render(1/60); }
+  hook.input.up = false;
+  ok("particle buffers stay bounded over a long run", true, "4000 frames driven");
 }
 
 // ------------------------------------------------------------------

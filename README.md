@@ -10,6 +10,8 @@ no install and no build step (just static HTML + Canvas).
 | --- | --- |
 | 🛢️ **Donkey Kong** — climb the girders, leap the barrels, rescue the princess | Playable |
 | ☂️ **Lemmings** — guide the little fellows to the exit with 8 classic skills | Playable |
+| 🚌 **One Street** — thread a 12 m bus down a street that does not want you there | Prototype |
+| 🚌 **One Street HD** — the same drive, full-screen and resolution-independent | Prototype |
 | ❓ Coming soon | — |
 
 The landing page (`index.html`) is a hub of game cards; each game lives on its
@@ -63,6 +65,28 @@ them to the exit before the timer runs out.
 - You can assign skills **while paused** — handy on a small screen.
 - **PALETTE** cycles full colour ↔ green ↔ grayscale Game Boy; **SOUND** mutes.
 - Eight original levels introduce one skill at a time, then combine them.
+
+## One Street — controls
+
+Two builds of the same game. `bus.html` is the original 320×192 pixel-art gate
+test; `bus-4k.html` is the identical simulation with a full-screen renderer that
+scales from a phone to a 4K monitor (and turns the world a quarter turn in
+portrait so the street runs down the long axis). `bus-bendy`, `bus-chase` and
+`bus-shift` are design variants — an 18 m articulated bus, a rotating camera,
+and a shift clock with passenger stops.
+
+| Action | Touch | Keyboard |
+| --- | --- | --- |
+| Throttle / brake &amp; reverse | ▲ / ▼ | ↑ ↓ or W S |
+| Steer | ◀ / ▶ | ← → or A D |
+| Horn (makes a stubborn car move) | HORN | Space |
+| Reset | RESET chip | R |
+| Doors (`bus-shift` only) | DOORS | Shift or E |
+
+The dotted outline ahead of the bus is the **swept path** — where the tail will
+end up if you hold the current steering. Tail swing is the whole game, so it is
+shown rather than hidden. HD adds a **ZOOM** chip and, on desktop, **F** for
+fullscreen.
 
 ## Deployment (GitHub Pages)
 

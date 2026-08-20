@@ -1,0 +1,1877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0c10">
+<title>ONE STREET HD &middot; Good Vibes Arcade</title>
+<style>
+  :root{
+    --ink:#eef1f4; --dim:#8c93a0; --line:#2a2f38;
+    --panel:rgba(10,12,16,.62); --panelEdge:rgba(160,175,195,.22);
+    --amber:#ffb524;
+    --pad:calc(10px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right))
+          calc(10px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ height:100%; margin:0; overflow:hidden; overscroll-behavior:none; }
+  body{
+    background:#0a0c10; color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    touch-action:none; user-select:none; -webkit-user-select:none;
+  }
+  /* The canvas IS the page. Everything else floats over it. */
+  #game{ position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; }
+
+  #ui{ position:fixed; inset:0; pointer-events:none; padding:var(--pad); }
+  #ui > *{ pointer-events:auto; }
+
+  /* ---- top bar ---------------------------------------------------- */
+  #topbar{
+    position:absolute; top:0; left:0; right:0; padding:var(--pad);
+    display:flex; flex-wrap:wrap; align-items:center; gap:6px;
+    transition:opacity .5s ease;
+  }
+  #topbar.dim{ opacity:.22; }
+  #topbar .grow{ flex:1 1 auto; }
+  a.back{
+    color:var(--ink); text-decoration:none; font-weight:700; font-size:13px;
+    letter-spacing:.08em; padding:7px 10px; border-radius:9px;
+    background:var(--panel); border:1px solid var(--panelEdge);
+    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  }
+  .chip{
+    font:inherit; font-size:11px; font-weight:700; letter-spacing:.09em;
+    color:var(--ink); background:var(--panel); border:1px solid var(--panelEdge);
+    border-radius:9px; padding:7px 9px; cursor:pointer; min-width:58px;
+    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  }
+  .chip:active{ background:rgba(120,140,170,.35); }
+  .chip.on{ background:var(--amber); color:#0a0c10; border-color:var(--amber); }
+  /* Phones get one row of chrome, not three. */
+  @media (max-width:600px){
+    .chip{ font-size:10px; padding:6px 7px; min-width:0; letter-spacing:.05em; }
+    a.back{ font-size:11px; padding:6px 8px; }
+    .vchip{ font-size:9px; padding:4px 7px; letter-spacing:.06em; }
+    #keyhint{ font-size:10px; padding:5px 9px; }
+  }
+  #variants{
+    position:absolute; left:0; right:0; bottom:0; padding:var(--pad);
+    display:flex; gap:5px; justify-content:center; flex-wrap:wrap;
+    transition:opacity .5s ease;
+  }
+  #variants.dim{ opacity:.16; }
+  .vchip{
+    text-decoration:none; font-size:10px; font-weight:700; letter-spacing:.1em;
+    color:var(--dim); background:var(--panel); border:1px solid var(--panelEdge);
+    border-radius:8px; padding:5px 9px;
+    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  }
+  .vchip.on{ color:#0a0c10; background:var(--amber); border-color:var(--amber); }
+
+  /* ---- touch controls --------------------------------------------- */
+  #pads{ display:none; }
+  body.touch #pads, body.forcepad #pads{
+    display:block; position:absolute; inset:0; pointer-events:none;
+  }
+  #pads > *{ pointer-events:auto; }
+  #dpad{
+    position:absolute; left:calc(14px + env(safe-area-inset-left));
+    bottom:calc(46px + env(safe-area-inset-bottom));
+    --k:clamp(52px, 15vmin, 84px);
+    display:grid; grid-template-columns:repeat(3,var(--k)); grid-template-rows:repeat(3,var(--k)); gap:5px;
+  }
+  .btn{
+    background:rgba(22,27,34,.72); color:var(--ink);
+    border:1px solid rgba(160,175,195,.26); border-radius:14px;
+    font-size:calc(var(--k) * .34); font-weight:700; line-height:1;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; touch-action:none;
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+    box-shadow:0 6px 18px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.10);
+  }
+  .btn:active{ background:rgba(120,140,170,.55); transform:translateY(2px); box-shadow:0 2px 8px rgba(0,0,0,.5); }
+  #up{ grid-area:1/2; } #left{ grid-area:2/1; } #right{ grid-area:2/3; } #down{ grid-area:3/2; }
+  #horn{
+    position:absolute; right:calc(18px + env(safe-area-inset-right));
+    bottom:calc(58px + env(safe-area-inset-bottom));
+    width:clamp(84px, 24vmin, 132px); aspect-ratio:1; border-radius:50%;
+    background:radial-gradient(circle at 34% 30%, #ffd06a, #d9891a 62%, #96590c);
+    color:#2a1c04; border:1px solid rgba(255,220,150,.5);
+    font-size:clamp(13px,3.4vmin,18px); font-weight:800; letter-spacing:.14em;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; touch-action:none;
+    box-shadow:0 8px 22px rgba(0,0,0,.5), inset 0 2px 0 rgba(255,255,255,.35);
+  }
+  #horn:active{ transform:translateY(3px) scale(.97); }
+
+  #keyhint{
+    position:absolute; left:50%; transform:translateX(-50%);
+    bottom:calc(38px + env(safe-area-inset-bottom));
+    font-size:11px; letter-spacing:.1em; color:var(--dim);
+    background:var(--panel); border:1px solid var(--panelEdge);
+    border-radius:9px; padding:6px 12px; white-space:nowrap;
+    transition:opacity .6s ease; text-align:center;
+    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  }
+  #keyhint.gone{ opacity:0; }
+  body.touch #keyhint, body.forcepad #keyhint{ display:none; }
+</style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="ui">
+    <div id="topbar">
+      <a class="back" href="index.html">&#9664; ARCADE</a>
+      <span class="grow"></span>
+      <button class="chip" id="palBtn">HD</button>
+      <button class="chip" id="zoomBtn">1.0&times;</button>
+      <button class="chip on" id="ghostBtn">GHOST</button>
+      <button class="chip" id="muteBtn">SOUND</button>
+      <button class="chip" id="resetBtn">RESET</button>
+    </div>
+
+    <div id="pads">
+      <div id="dpad">
+        <button class="btn" id="up">&#9650;</button>
+        <button class="btn" id="left">&#9664;</button>
+        <button class="btn" id="right">&#9654;</button>
+        <button class="btn" id="down">&#9660;</button>
+      </div>
+      <button class="btn" id="horn">HORN</button>
+    </div>
+
+    <div id="keyhint">&#8593;&#8595; THROTTLE / BRAKE &middot; &#8592;&#8594; STEER &middot; SPACE HORN &middot; R RESET</div>
+
+    <div id="variants">
+      <a class="vchip on" href="bus-4k.html">HD</a>
+      <a class="vchip" href="bus.html">RIGID</a>
+      <a class="vchip" href="bus-bendy.html">BENDY</a>
+      <a class="vchip" href="bus-chase.html">CHASE</a>
+      <a class="vchip" href="bus-shift.html">SHIFT</a>
+    </div>
+  </div>
+
+<script>
+(function(){
+"use strict";
+
+// ============================================================
+// ONE STREET HD
+// The same simulation as bus.html -- identical physics, identical street,
+// identical oncoming-car AI -- rendered properly. Everything below the
+// "Render" banner is new; everything above it is the prototype verbatim,
+// so the driving model cannot drift from the version it is compared against.
+//
+// The visual brief: full-screen on a laptop, responsive on a phone, and
+// satisfying to look at while you thread a 12 m bus through a 3.3 m pinch.
+// ============================================================
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+// Viewport-driven resolution. W/H are CSS pixels; the backing store is
+// multiplied by devicePixelRatio (capped at 2 -- past that it is invisible
+// and expensive). PPM is chosen so the WORLD framing is the same on every
+// screen: a phone and a 4K monitor see the same slice of street, the big
+// screen just resolves it better.
+const VIEW_X_M = 46;   // minimum metres visible across the width
+const VIEW_Y_M = 27;   // minimum metres visible down the height
+// VW/VH are the real canvas in CSS pixels. W/H are the LOGICAL render extents:
+// on a portrait phone the whole world is turned a quarter turn so the street
+// runs down the long axis instead of across the short one, and W/H swap. The
+// rotation is fixed to the device, never to the bus, so steering stays
+// vehicle-relative and the camera still never spins.
+let VW = 960, VH = 540, rot90 = false;
+let W = 960, H = 540, DPR = 1, PPM = 20, PPM_BASE = 20;
+let zoomStep = 1;
+const ZOOMS = [0.82, 1.0, 1.22];
+
+function readViewport(){
+  const iw = (typeof window !== "undefined" && window.innerWidth)  || 960;
+  const ih = (typeof window !== "undefined" && window.innerHeight) || 540;
+  return { w: Math.max(280, iw|0), h: Math.max(200, ih|0) };
+}
+function resize(){
+  const v = readViewport();
+  VW = v.w; VH = v.h;
+  DPR = Math.min((typeof window !== "undefined" && window.devicePixelRatio) || 1, 2);
+  canvas.width  = Math.round(VW*DPR);
+  canvas.height = Math.round(VH*DPR);
+  if(canvas.style){ canvas.style.width = VW+"px"; canvas.style.height = VH+"px"; }
+  rot90 = VH > VW*1.12;
+  W = rot90 ? VH : VW;
+  H = rot90 ? VW : VH;
+  PPM_BASE = Math.min(W/VIEW_X_M, H/VIEW_Y_M) * ZOOMS[zoomStep];
+  PPM = PPM_BASE;
+  buildTexture();
+}
+// Logical render space -> device pixels, for the few things drawn upright.
+function devX(lx,ly){
+  const zx = W/2 + (lx-W/2)*zoomEase, zy = H/2 + (ly-H/2)*zoomEase;
+  return rot90 ? VW - zy : zx;
+}
+function devY(lx,ly){
+  const zx = W/2 + (lx-W/2)*zoomEase, zy = H/2 + (ly-H/2)*zoomEase;
+  return rot90 ? zx : zy;
+}
+
+// ---------- Palettes ----------
+// Bodies are authored with single-char colour KEYS, as in the prototype.
+// Every key must appear in BOTH KEY_TONE and GBC or it renders magenta.
+// Lighting, shadow and glow are drawn as alpha overlays instead of keys, so
+// the two Game Boy palettes keep working while the HD one gets the depth.
+const TONES = {
+  green: ["#0f380f","#306230","#8bac0f","#9bbc0f"],
+  gray:  ["#0b0b0b","#4a4a4a","#a6a6a6","#eaeaea"]
+};
+const KEY_TONE = {
+  ".":-1,
+  "a":0,                                // void behind everything
+  "b":1,"B":0,"q":1,"Q":0,"i":2,        // building roof / wall, warm variant, roof detail
+  "j":3,"J":0,                          // lit window, dark window
+  "d":1,"D":0,"T":1,"Z":0,"R":1,        // asphalt, shade, patch, crack, wheel-track
+  "p":2,"P":1,"k":3,"K":1,"l":3,        // pavement, joint, kerb top, kerb face, paint
+  "u":3,"U":2,"g":1,"G":0,"t":0,"m":2,  // bus body/shade, glass, tyre, mirror
+  "c":2,"C":1,"v":2,"V":1,"o":2,"O":1,  // parked car, van, oncoming car
+  "h":3,"r":2,"n":1,"N":2,              // hazard, brake light, bin, bin lid
+  "s":3,"f":3,"e":2,                    // spark, warm light, ghost
+  "x":3,"X":1,"y":3,"w":3               // hud, hud dim, warn, white
+};
+const GBC = {
+  "a":"#080a0e",
+  "b":"#565f6b","B":"#333a44","q":"#6b5a4c","Q":"#3f3630","i":"#7d8794",
+  "j":"#ffd98a","J":"#191e26",
+  "d":"#3c3f46","D":"#2c2f35","T":"#464a52","Z":"#2a2d33","R":"#33363c",
+  "p":"#8a8d93","P":"#75787e","k":"#b9bcc2","K":"#6e7178","l":"#e8e2c8",
+  "u":"#e2493a","U":"#a32f22","g":"#2f4d63","G":"#1a2b38","t":"#15161a","m":"#c3c7cd",
+  "c":"#4a86c6","C":"#2f5e91","v":"#e0dbcf","V":"#a9a496","o":"#52a86e","O":"#2f7048",
+  "h":"#ffb524","r":"#ff4a3d","n":"#46583f","N":"#67805c",
+  "s":"#fff0b8","f":"#ffd8a0","e":"#6fe3bd",
+  "x":"#eef1f4","X":"#8c93a0","y":"#ffe45c","w":"#ffffff"
+};
+const PAL_ORDER = ["color","green","gray"];
+const PAL_LABEL = { color:"HD", green:"GREEN", gray:"GRAY" };
+let palMode = localStorage.getItem("bus4k_pal3") || "color";
+if(PAL_ORDER.indexOf(palMode) < 0) palMode = "color";
+
+function col(key){
+  if(palMode === "color") return GBC[key] || "#ff00ff";
+  const t = KEY_TONE[key]; return TONES[palMode][t === undefined ? 0 : t];
+}
+
+// ============================================================
+// SIMULATION -- copied verbatim from bus.html (lines 215-628 and
+// 631-721). Do not edit: tools/parity-bus.js drives both files with the
+// same input script and asserts the bus pose matches to 1e-9. If this
+// block drifts, the HD build stops being the same game.
+// ============================================================
+// ============================================================
+// The street: a centreline polyline with a varying half-width.
+// Half-width is the BUILDING line -- hard collision. Inside it sits a
+// 0.9 m pavement strip each side that the bus may mount (rumble, no damage),
+// which is the small voluntary margin the design wants players to gamble on.
+// ============================================================
+const PAVE = 0.9;
+const NODES = [
+  {x:0,   y:0,   hw:4.6},
+  {x:40,  y:0,   hw:4.6},
+  {x:70,  y:-8,  hw:4.2},
+  {x:105, y:-12, hw:4.0},
+  {x:135, y:-4,  hw:3.3},   // the pinch
+  {x:160, y:6,   hw:3.4},
+  {x:190, y:10,  hw:4.0},
+  {x:220, y:2,   hw:4.4},
+  {x:236, y:-2,  hw:5.0},
+  {x:252, y:-2,  hw:7.2}    // turning head
+];
+const SEGS = [];
+let TOTAL_S = 0;
+(function buildPath(){
+  for(let i=0;i<NODES.length-1;i++){
+    const a = NODES[i], b = NODES[i+1];
+    const dx = b.x-a.x, dy = b.y-a.y;
+    const len = Math.hypot(dx,dy);
+    SEGS.push({
+      ax:a.x, ay:a.y, bx:b.x, by:b.y,
+      dx:dx/len, dy:dy/len, nx:dy/len, ny:-dx/len,   // left normal
+      len, s0:TOTAL_S, hw0:a.hw, hw1:b.hw
+    });
+    TOTAL_S += len;
+  }
+})();
+
+// Nearest point on the path. Returns along-distance s, lateral offset q
+// (positive = left of travel), and the half-width there.
+function project(x,y){
+  let best = null, bestD = Infinity;
+  for(let i=0;i<SEGS.length;i++){
+    const g = SEGS[i];
+    let t = ((x-g.ax)*g.dx + (y-g.ay)*g.dy);
+    if(t < 0) t = 0; else if(t > g.len) t = g.len;
+    const px = g.ax + g.dx*t, py = g.ay + g.dy*t;
+    const d = Math.hypot(x-px, y-py);
+    if(d < bestD){
+      bestD = d;
+      const u = t/g.len;
+      best = { s:g.s0+t, q:(x-g.ax)*g.nx + (y-g.ay)*g.ny, hw:g.hw0+(g.hw1-g.hw0)*u, seg:i, t };
+    }
+  }
+  return best;
+}
+// World position / frame at a given along-distance.
+function pathPoint(s){
+  if(s < 0) s = 0; else if(s > TOTAL_S) s = TOTAL_S;
+  for(let i=0;i<SEGS.length;i++){
+    const g = SEGS[i];
+    if(s <= g.s0+g.len || i === SEGS.length-1){
+      const t = Math.min(s-g.s0, g.len), u = t/g.len;
+      return { x:g.ax+g.dx*t, y:g.ay+g.dy*t, dx:g.dx, dy:g.dy, nx:g.nx, ny:g.ny,
+               hw:g.hw0+(g.hw1-g.hw0)*u, ang:Math.atan2(g.dy,g.dx) };
+    }
+  }
+  return null;
+}
+function toWorld(s,q){ const p = pathPoint(s); return { x:p.x+p.nx*q, y:p.y+p.ny*q, ang:p.ang }; }
+
+// ============================================================
+// Obstacles. Six parked cars, two of them badly -- each one is a joke that
+// is also a geometry problem. Bins are nudgeable (the pressure valve).
+// ============================================================
+const CAR_L = 4.2, CAR_W = 1.8, VAN_L = 5.4, VAN_W = 2.1;
+const PARKED_SPEC = [
+  {s:34,  q:2.7,  a:0.02,  t:"car", tint:"c"},
+  {s:74,  q:-2.5, a:-0.03, t:"car", tint:"c"},
+  {s:98,  q:2.6,  a:0.0,   t:"car", tint:"c"},
+  {s:118, q:2.4,  a:0.03,  t:"car", tint:"c"},                 // narrows the squeeze-past
+  {s:132, q:-1.35,a:-0.05, t:"van", tint:"v", hazard:true},    // BADLY: double-parked
+  {s:178, q:1.9,  a:0.56,  t:"car", tint:"c", straddle:true}   // BADLY: 32 deg across two bays
+];
+const BIN_SPEC = [ {s:60,q:3.0},{s:62.2,q:3.05},{s:184,q:-2.8},{s:186.4,q:-2.95},{s:188.6,q:-2.6} ];
+
+let obstacles = [], bins = [];
+function buildWorld(){
+  obstacles = PARKED_SPEC.map(p=>{
+    const w = toWorld(p.s, p.q);
+    const isVan = p.t === "van";
+    const o = { x:w.x, y:w.y, ang:w.ang + p.a,
+             hl:(isVan?VAN_L:CAR_L)/2, hw:(isVan?VAN_W:CAR_W)/2,
+             kind:p.t, hazard:!!p.hazard, straddle:!!p.straddle };
+    const pr = project(o.x,o.y); o.ps = pr.s; o.pq = pr.q;
+    return o;
+  });
+  bins = BIN_SPEC.map(b=>{
+    const w = toWorld(b.s, b.q);
+    return { x:w.x, y:w.y, vx:0, vy:0, ang:Math.random()*3, spin:0, r:0.36 };
+  });
+}
+
+// ============================================================
+// The bus. Bicycle model driven from the REAR AXLE, with real overhangs so
+// the tail sweeps outward opposite the turn. That sweep is the whole game.
+// ============================================================
+const BUS_L = 12.0, BUS_W = 2.55, WB = 6.0, FRONT_OH = 2.5, REAR_OH = 3.5;
+const BUS_HW = BUS_W/2;
+const STEER_MAX = 0.733;          // ~42 deg -> ~22 m kerb-to-kerb circle
+const V_MAX = 14.0, V_REV = 4.0;  // m/s
+const ACCEL = 1.9, BRAKE = 4.2, DRAG = 0.55;
+
+const bus = {
+  rx:0, ry:0, h:0, v:0,
+  steer:0, steerNorm:0,
+  scrapes:[],      // permanent decals: {a, side}
+  bump:0
+};
+function busFrame(){ return { c:Math.cos(bus.h), s:Math.sin(bus.h) }; }
+// Local (along-from-rear-axle, left-offset) -> world.
+function busLocal(a,b){
+  const c = Math.cos(bus.h), s = Math.sin(bus.h);
+  return { x:bus.rx + a*c + b*s, y:bus.ry + a*s - b*c };
+}
+function busCentre(){ return busLocal(WB + FRONT_OH - BUS_L/2, 0); }
+function busOBB(){
+  const p = busCentre();
+  return { x:p.x, y:p.y, ang:bus.h, hl:BUS_L/2, hw:BUS_HW };
+}
+
+function resetBus(){
+  const w = toWorld(8, 2.0);
+  bus.rx = w.x; bus.ry = w.y; bus.h = w.ang; bus.v = 0;
+  bus.steer = 0; bus.steerNorm = 0; bus.scrapes.length = 0; bus.bump = 0;
+}
+
+// ============================================================
+// Geometry utilities
+// ============================================================
+function pointInOBB(px,py,o){
+  const c = Math.cos(o.ang), s = Math.sin(o.ang);
+  const dx = px-o.x, dy = py-o.y;
+  const lx = dx*c + dy*s, ly = dx*s - dy*c;
+  return lx >= -o.hl && lx <= o.hl && ly >= -o.hw && ly <= o.hw;
+}
+function obbAxes(o){
+  const c = Math.cos(o.ang), s = Math.sin(o.ang);
+  return [{x:c,y:s},{x:s,y:-c}];
+}
+function obbProject(o,ax){
+  const c = Math.cos(o.ang), s = Math.sin(o.ang);
+  const cen = o.x*ax.x + o.y*ax.y;
+  const r = o.hl*Math.abs(c*ax.x + s*ax.y) + o.hw*Math.abs(s*ax.x - c*ax.y);
+  return {min:cen-r, max:cen+r};
+}
+// Separating-axis test. Returns the minimum translation vector pushing A out of B.
+function satOBB(A,B){
+  const axes = obbAxes(A).concat(obbAxes(B));
+  let best = Infinity, bx = 0, by = 0;
+  for(const ax of axes){
+    const pa = obbProject(A,ax), pb = obbProject(B,ax);
+    const ov = Math.min(pa.max,pb.max) - Math.max(pa.min,pb.min);
+    if(ov <= 0) return null;
+    if(ov < best){
+      best = ov;
+      const dir = (pa.min+pa.max)/2 < (pb.min+pb.max)/2 ? -1 : 1;
+      bx = ax.x*dir; by = ax.y*dir;
+    }
+  }
+  return {depth:best, nx:bx, ny:by};
+}
+
+// ============================================================
+// The oncoming car: it negotiates rather than just existing.
+// Telegraphs every decision, yields into a bay when the corridor cannot
+// hold both, or -- if stubborn -- refuses until you use the horn.
+// ============================================================
+const NEED_BOTH = BUS_W + CAR_W + 0.55;   // width for a shared pass
+const car = { s:0, q:0, v:0, targetQ:0, mode:"cruise", timer:0, stubborn:false,
+              honked:false, blink:0, ang:0, x:0, y:0 };
+
+function spawnCar(){
+  car.s = TOTAL_S - 10; car.q = -2.0; car.v = 0; car.targetQ = -2.0;
+  car.mode = "cruise"; car.timer = 0; car.honked = false;
+  car.stubborn = Math.random() < 0.5;
+  const w = toWorld(car.s, car.q); car.x = w.x; car.y = w.y; car.ang = w.ang + Math.PI;
+}
+// Widest free lateral interval at along-distance s, ignoring the given actor.
+function freeInterval(s){
+  const p = pathPoint(s);
+  if(!p) return {lo:0, hi:0, w:0};
+  const lim = p.hw;
+  // Collect blocked spans from static obstacles that straddle this s.
+  const blocked = [];
+  for(const o of obstacles){
+    const reach = Math.abs(o.hl*Math.cos(o.ang - p.ang)) + Math.abs(o.hw*Math.sin(o.ang - p.ang));
+    if(s < o.ps - reach || s > o.ps + reach) continue;
+    const half = Math.abs(o.hl*Math.sin(o.ang - p.ang)) + Math.abs(o.hw*Math.cos(o.ang - p.ang));
+    blocked.push([o.pq-half, o.pq+half]);
+  }
+  blocked.sort((a,b)=>a[0]-b[0]);
+  let lo = -lim, best = {lo:-lim, hi:lim, w:2*lim};
+  best.w = -1;
+  let cursor = -lim;
+  for(const b of blocked){
+    if(b[0] > cursor){
+      const w = Math.min(b[0],lim) - cursor;
+      if(w > best.w) best = {lo:cursor, hi:Math.min(b[0],lim), w};
+    }
+    if(b[1] > cursor) cursor = b[1];
+  }
+  if(lim > cursor){ const w = lim - cursor; if(w > best.w) best = {lo:cursor, hi:lim, w}; }
+  if(best.w < 0) best = {lo:0, hi:0, w:0};
+  return best;
+}
+function busS(){ const p = busCentre(); return project(p.x,p.y); }
+
+function updateCar(dt){
+  const bp = busS();
+  const gap = car.s - bp.s;             // positive while the car is still ahead
+  car.blink += dt;
+
+  // Is there a sample between us where we cannot both fit?
+  let conflict = false, worstS = car.s;
+  if(gap > 0){
+    for(let s = Math.max(bp.s, car.s-60); s <= car.s; s += 2){
+      if(freeInterval(s).w < NEED_BOTH){ conflict = true; worstS = s; break; }
+    }
+  }
+
+  if(car.mode === "cruise"){
+    // Close to within sight of the pinch before negotiating, so the whole
+    // exchange happens on screen where the player can read it.
+    if(conflict && gap < 55 && (car.s - worstS) < 18){ car.mode = "telegraph"; car.timer = 0.42; }
+  } else if(car.mode === "telegraph"){
+    car.timer -= dt;
+    if(car.timer <= 0){
+      if(car.stubborn && !car.honked){ car.mode = "wait"; car.honked = false; }
+      else {
+        // Look behind (higher s) for a bay wide enough to share.
+        let bay = -1;
+        for(let s = Math.max(worstS, car.s); s < Math.min(TOTAL_S-4, car.s+38); s += 1.5){
+          if(freeInterval(s).w >= NEED_BOTH + 0.6){ bay = s + 6; break; }
+        }
+        if(bay > 0 && bay > car.s){ car.mode = "backing"; car.bay = Math.min(bay, TOTAL_S-6); }
+        else { car.mode = "wait"; car.honked = false; }
+      }
+    }
+  } else if(car.mode === "backing"){
+    car.v = 3.0;                        // reverse, away from the bus
+    if(car.s >= car.bay){ car.v = 0; car.mode = "yield"; }
+  } else if(car.mode === "yield" || car.mode === "wait"){
+    car.v = 0;
+    if(car.mode === "wait" && car.honked){ car.mode = "telegraph"; car.timer = 0.42; car.stubborn = false; }
+    if(gap < -9) { car.mode = "cruise"; car.honked = false; }
+  }
+
+  if(car.mode === "cruise"){
+    // Keep left, but step around anything parked in the way.
+    const look = freeInterval(car.s - 7);
+    let want = -2.0;
+    if(want < look.lo + CAR_W/2 + 0.2 || want > look.hi - CAR_W/2 - 0.2){
+      want = (look.lo + look.hi)/2;
+    }
+    car.targetQ = want;
+    // Slow down as the gap to the bus closes (light IDM flavour).
+    let vWant = 7.0;
+    if(gap > 0 && gap < 30) vWant = Math.max(1.6, 7.0 * (gap-6)/24);
+    if(gap > 0 && gap < 9) vWant = 0;
+    car.v += Math.max(-6*dt, Math.min(6*dt, (-vWant) - car.v));
+  } else if(car.mode === "yield"){
+    // Hug the far side of the bay so the bus gets the room.
+    const fi = freeInterval(car.s);
+    car.targetQ = fi.lo + CAR_W/2 + 0.15;
+  } else if(car.mode === "telegraph" || car.mode === "wait"){
+    car.v += Math.max(-8*dt, Math.min(8*dt, 0 - car.v));
+  }
+
+  car.s += car.v * dt;        // signed along +s: cruise negative, backing positive
+  car.q += Math.max(-1.8*dt, Math.min(1.8*dt, car.targetQ - car.q));
+  if(car.s < 4 || car.s > TOTAL_S - 2) spawnCar();
+
+  const w = toWorld(car.s, car.q);
+  const lateralDrift = (car.targetQ - car.q);
+  car.x = w.x; car.y = w.y;
+  car.ang = w.ang + Math.PI + Math.max(-0.25, Math.min(0.25, -lateralDrift*0.35));
+}
+function carOBB(){ return {x:car.x, y:car.y, ang:car.ang, hl:CAR_L/2, hw:CAR_W/2}; }
+
+// ============================================================
+// Clearance probing -- ray-march outward from the bus flanks. Feeds the
+// squeeze feedback, the mirror fold and the HUD bars.
+// ============================================================
+let clearL = 1.5, clearR = 1.5, squeezing = false, squeezeMin = 9, squeezeDirty = false;
+let squeezeFlash = 0, squeezeFlashVal = 0;
+const CLEAR_CAP = 1.5;
+
+function blockedAt(px,py){
+  const pr = project(px,py);
+  if(Math.abs(pr.q) > pr.hw || pr.s <= 0.2 || pr.s >= TOTAL_S-0.2) return true;
+  for(const o of obstacles) if(pointInOBB(px,py,o)) return true;
+  const co = carOBB();
+  if(pointInOBB(px,py,co)) return true;
+  for(const b of bins) if((px-b.x)*(px-b.x)+(py-b.y)*(py-b.y) < b.r*b.r) return true;
+  return false;
+}
+function probeSide(sign){
+  const c = Math.cos(bus.h), s = Math.sin(bus.h);
+  let best = CLEAR_CAP;
+  for(const a of [-REAR_OH+0.4, 0, 2.5, 5.5, WB+FRONT_OH-0.4]){
+    const ox = bus.rx + a*c, oy = bus.ry + a*s;
+    for(let d=0; d<=CLEAR_CAP; d+=0.12){
+      const b = sign*(BUS_HW + d);
+      if(blockedAt(ox + b*s, oy - b*c)){ if(d < best) best = d; break; }
+    }
+  }
+  return best;
+}
+
+// ============================================================
+// Collision -- forgiving by design. Scrapes cost paint and a little speed,
+// head-on contact stalls you. Nothing ever ends the run.
+// ============================================================
+let shake = 0, hitCount = 0;
+const sparks = [];
+function addSparks(x,y,n){
+  for(let i=0;i<n;i++)
+    sparks.push({x,y, vx:(Math.random()-0.5)*7, vy:(Math.random()-0.5)*7, life:0.28+Math.random()*0.22});
+}
+function resolveHit(nx,ny,depth,px,py){
+  bus.rx += nx*depth; bus.ry += ny*depth;
+  const c = Math.cos(bus.h), s = Math.sin(bus.h);
+  const along = Math.abs(nx*c + ny*s);         // 1 = head-on, 0 = pure scrape
+  const impact = Math.abs(bus.v) * (0.25 + along);
+  if(along > 0.55){
+    bus.v *= 0.06;                              // stall
+  } else {
+    bus.v *= 0.90;                              // scrape past
+    const lx = (px-bus.rx)*c + (py-bus.ry)*s;
+    const side = ((px-bus.rx)*s - (py-bus.ry)*c) > 0 ? 1 : -1;
+    if(bus.scrapes.length < 40 && Math.abs(bus.v) > 0.6) bus.scrapes.push({a:lx, side});
+    bus.h += side * Math.min(0.05, Math.abs(bus.v)*0.006);   // slight yaw kick
+  }
+  if(impact > 0.7){
+    shake = Math.min(4.5, shake + impact*0.5);
+    addSparks(px, py, 3 + (impact*1.5|0));
+    sBump(impact);
+    hitCount++;
+    squeezeDirty = true;
+  }
+  bus.bump = Math.max(bus.bump, Math.min(1, impact/6));
+}
+function collide(){
+  const A = busOBB();
+  for(const o of obstacles){
+    const m = satOBB(A,o);
+    if(m) resolveHit(m.nx, m.ny, m.depth, (A.x+o.x)/2, (A.y+o.y)/2);
+  }
+  const co = carOBB();
+  const mc = satOBB(A,co);
+  if(mc) resolveHit(mc.nx, mc.ny, mc.depth, (A.x+co.x)/2, (A.y+co.y)/2);
+
+  // Walls: push each body corner and flank midpoint back inside the corridor.
+  const c = Math.cos(bus.h), s = Math.sin(bus.h);
+  for(const a of [-REAR_OH, 0, 2.5, 5.5, WB+FRONT_OH]){
+    for(const b of [-BUS_HW, BUS_HW]){
+      const px = bus.rx + a*c + b*s, py = bus.ry + a*s - b*c;
+      const pr = project(px,py);
+      const over = Math.abs(pr.q) - pr.hw;
+      if(over > 0){
+        const p = pathPoint(pr.s);
+        const sgn = pr.q > 0 ? 1 : -1;
+        resolveHit(-p.nx*sgn, -p.ny*sgn, over, px, py);
+      }
+      if(pr.s < 0.4 || pr.s > TOTAL_S-0.4){
+        const p = pathPoint(pr.s < 0.4 ? 0 : TOTAL_S);
+        const sgn = pr.s < 0.4 ? 1 : -1;
+        resolveHit(p.dx*sgn, p.dy*sgn, 0.5, px, py);
+      }
+    }
+  }
+  // Bins are nudgeable -- the pressure valve, and the funniest thing here.
+  for(const bn of bins){
+    const pr2 = ((bn.x-A.x)*Math.cos(A.ang) + (bn.y-A.y)*Math.sin(A.ang));
+    const ly = ((bn.x-A.x)*Math.sin(A.ang) - (bn.y-A.y)*Math.cos(A.ang));
+    if(Math.abs(pr2) < A.hl + bn.r && Math.abs(ly) < A.hw + bn.r){
+      const push = (ly > 0 ? 1 : -1);
+      const c2 = Math.cos(bus.h), s2 = Math.sin(bus.h);
+      bn.vx += (s2*push)*Math.abs(bus.v)*0.55 + c2*bus.v*0.25;
+      bn.vy += (-c2*push)*Math.abs(bus.v)*0.55 + s2*bus.v*0.25;
+      bn.spin += (Math.random()-0.5)*9;
+      const need = A.hw + bn.r - Math.abs(ly);
+      bn.x += s2*push*need; bn.y += -c2*push*need;
+      if(Math.abs(bus.v) > 1.2){ sBin(); }
+    }
+  }
+}
+
+// ============================================================
+// Camera -- world-fixed (never rotates), critically damped, with a
+// look-ahead that is capped so the tail can never leave the screen.
+// ============================================================
+let camX = 0, camY = 0, camVX = 0, camVY = 0;
+function updateCam(dt, snap){
+  const p = busCentre();
+  const c = Math.cos(bus.h), s = Math.sin(bus.h);
+  const halfAlong = ((W/2)*Math.abs(c) + (H/2)*Math.abs(s)) / PPM;
+  const maxLook = Math.max(0, halfAlong - (BUS_L/2) - 2.5);
+  const look = Math.min(Math.abs(bus.v) * 1.15, maxLook, 20);
+  const tx = p.x + c*look, ty = p.y + s*look;
+  if(snap){ camX = tx; camY = ty; camVX = camVY = 0; return; }
+  const w = 6.5;
+  camVX += (-2*w*camVX - w*w*(camX-tx))*dt; camX += camVX*dt;
+  camVY += (-2*w*camVY - w*w*(camY-ty))*dt; camY += camVY*dt;
+}
+let shakeX = 0, shakeY = 0;
+// Screen mapping. Same formula as the prototype; the shake term is authored
+// in prototype pixels (a 320-wide canvas) so it is scaled to the real
+// viewport here, otherwise a 4 px kick is invisible on a laptop.
+function shakeScale(){ return PPM_BASE/6; }
+function sx(x){ return (x-camX)*PPM + W/2 + shakeX*shakeScale(); }
+function sy(y){ return (y-camY)*PPM + H/2 + shakeY*shakeScale(); }
+
+// ============================================================
+// Update
+// ============================================================
+const input = { left:false, right:false, up:false, down:false, horn:false, hornEdge:false };
+let timeScale = 1, showGhost = true, frameNo = 0;
+let noClip = false;   // test-only: skip collision resolution
+
+function update(){
+  frameNo++;
+  const target = squeezing ? 0.9 : 1;
+  timeScale += (target - timeScale) * 0.12;
+  const dt = (1/60) * timeScale;
+
+  // Steering ramps to lock over ~250 ms and self-centres faster, so a
+  // partial lock is holdable. Binary steer would ruin the precision fantasy.
+  let want = 0;
+  if(input.left) want -= 1;
+  if(input.right) want += 1;
+  const rate = want === 0 ? dt/0.18 : dt/0.25;
+  const diff = want - bus.steerNorm;
+  bus.steerNorm += Math.max(-rate, Math.min(rate, diff));
+  const speedFrac = Math.min(1, Math.abs(bus.v)/V_MAX);
+  bus.steer = bus.steerNorm * STEER_MAX * (1 - 0.62*speedFrac);
+
+  // Mass: slow to wind up, slow to shed.
+  if(input.up)        bus.v += ACCEL*dt;
+  else if(input.down){
+    if(bus.v > 0.15)  bus.v -= BRAKE*dt;
+    else              bus.v -= ACCEL*0.7*dt;
+  } else {
+    const d = DRAG*dt;
+    if(bus.v > d) bus.v -= d; else if(bus.v < -d) bus.v += d; else bus.v = 0;
+  }
+  if(bus.v > V_MAX) bus.v = V_MAX;
+  if(bus.v < -V_REV) bus.v = -V_REV;
+
+  bus.rx += bus.v*dt*Math.cos(bus.h);
+  bus.ry += bus.v*dt*Math.sin(bus.h);
+  bus.h  += bus.v*dt*Math.tan(bus.steer)/WB;
+
+  if(input.hornEdge){
+    input.hornEdge = false;
+    sHorn();
+    const bp = busS();
+    if(Math.abs(car.s - bp.s) < 50) car.honked = true;
+  }
+
+  updateCar(dt);
+  if(!noClip) collide();
+
+  for(const b of bins){
+    b.x += b.vx*dt; b.y += b.vy*dt; b.ang += b.spin*dt;
+    const f = Math.pow(0.02, dt);
+    b.vx *= f; b.vy *= f; b.spin *= f;
+    const pr = project(b.x,b.y);
+    if(Math.abs(pr.q) > pr.hw - b.r){
+      const p = pathPoint(pr.s), sg = pr.q > 0 ? 1 : -1;
+      const over = Math.abs(pr.q) - (pr.hw - b.r);
+      b.x -= p.nx*sg*over; b.y -= p.ny*sg*over;
+      b.vx *= -0.4; b.vy *= -0.4;
+    }
+  }
+  for(let i=sparks.length-1;i>=0;i--){
+    const p = sparks[i];
+    p.x += p.vx*dt; p.y += p.vy*dt; p.vx *= 0.9; p.vy *= 0.9;
+    p.life -= dt; if(p.life <= 0) sparks.splice(i,1);
+  }
+
+  clearL = probeSide(1); clearR = probeSide(-1);
+  const wasSqueezing = squeezing;
+  squeezing = clearL < 0.75 && clearR < 0.75;
+  if(squeezing){
+    const g = Math.min(clearL, clearR);
+    if(!wasSqueezing){ squeezeMin = g; squeezeDirty = false; }
+    else if(g < squeezeMin) squeezeMin = g;
+    sSqueeze(g);
+  } else if(wasSqueezing){
+    if(!squeezeDirty){ squeezeFlash = 1.1; squeezeFlashVal = squeezeMin; sChime(); }
+    squeezeDirty = false;
+  }
+  if(squeezeFlash > 0) squeezeFlash -= dt;
+
+  if(shake > 0){ shake = Math.max(0, shake - dt*9); }
+  shakeX = shake ? (Math.random()-0.5)*shake*2 : 0;
+  shakeY = shake ? (Math.random()-0.5)*shake*2 : 0;
+  bus.bump = Math.max(0, bus.bump - dt*2.5);
+
+  updateCam(dt, false);
+  engineUpdate(bus.v);
+}
+
+// ============================================================
+// RENDER
+// Everything from here down is new. The prototype drew 320x192 pixels with a
+// scanline rasteriser; this draws real geometry at the device's own
+// resolution, with fake-3D extruded buildings, a directional sun, and enough
+// surface grime that the street reads as a place rather than a corridor.
+// No sim state is touched below this line -- all render-only state
+// (particles, skid marks, eased zoom) lives here and is driven by the frame
+// delta, so update() stays bit-identical to bus.html.
+// ============================================================
+
+const SUN_DX = 0.62, SUN_DY = 0.42;        // world direction shadows fall
+const SUN_L  = Math.hypot(SUN_DX, SUN_DY);
+const EXT    = 0.115;                      // building lean per metre of camera distance
+const BLD_SH = 2.1;                        // building shadow length per unit height
+
+function shade(a){ return "rgba(0,0,0,"+a+")"; }
+function lite(a){ return "rgba(255,255,255,"+a+")"; }
+function hash2(a,b){
+  let h = (a*374761393 + b*668265263) | 0;
+  h = ((h ^ (h>>>13)) * 1274126177) | 0;
+  return ((h ^ (h>>>16)) >>> 0) / 4294967296;
+}
+// Rounded rect path in whatever space the context is currently in.
+function rr(x,y,w,h,r){
+  r = Math.min(r||0, Math.abs(w)/2, Math.abs(h)/2);
+  ctx.beginPath();
+  if(!r){ ctx.rect(x,y,w,h); ctx.closePath(); return; }
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+}
+function fillRR(x0,y0,x1,y1,style,r){
+  rr(Math.min(x0,x1), Math.min(y0,y1), Math.abs(x1-x0), Math.abs(y1-y0), r);
+  ctx.fillStyle = style; ctx.fill();
+}
+function fillKey(x0,y0,x1,y1,key,r){ if(key !== ".") fillRR(x0,y0,x1,y1,col(key),r); }
+// World polygon helper: pts are {x,y} in world metres.
+function poly(pts){
+  ctx.beginPath();
+  for(let i=0;i<pts.length;i++){
+    const px = sx(pts[i].x), py = sy(pts[i].y);
+    if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+  }
+  ctx.closePath();
+}
+// Draw in a body's local frame: +x forward, +y left, units are METRES.
+function inLocal(x,y,ang,fn){
+  const c = Math.cos(ang), s = Math.sin(ang);
+  ctx.save();
+  ctx.transform(c*PPM, s*PPM, s*PPM, -c*PPM, sx(x), sy(y));
+  fn();
+  ctx.restore();
+}
+
+// ---------- asphalt grain, rebuilt whenever the viewport changes ----------
+let grain = null, grainSize = 64;
+function buildTexture(){
+  grain = null;
+  if(typeof document === "undefined" || !document.createElement) return;
+  let tile;
+  try { tile = document.createElement("canvas"); } catch(e){ return; }
+  if(!tile || !tile.getContext) return;
+  tile.width = tile.height = grainSize;
+  const g = tile.getContext("2d");
+  if(!g || !g.fillRect) return;
+  for(let y=0; y<grainSize; y+=2){
+    for(let x=0; x<grainSize; x+=2){
+      const n = hash2(x*7+1, y*11+3);
+      g.fillStyle = n > 0.5 ? "rgba(255,255,255,"+(0.030*(n-0.5)*2).toFixed(3)+")"
+                            : "rgba(0,0,0,"+(0.055*(0.5-n)*2).toFixed(3)+")";
+      g.fillRect(x,y,2,2);
+    }
+  }
+  try { grain = ctx.createPattern(tile, "repeat"); } catch(e){ grain = null; }
+}
+
+// ---------- corridor outline, mitred at the kinks ----------
+const NRM = [];
+(function buildNormals(){
+  for(let i=0;i<NODES.length;i++){
+    let nx, ny;
+    if(i === 0){ nx = SEGS[0].nx; ny = SEGS[0].ny; }
+    else if(i === NODES.length-1){ const g = SEGS[SEGS.length-1]; nx = g.nx; ny = g.ny; }
+    else {
+      nx = SEGS[i-1].nx + SEGS[i].nx; ny = SEGS[i-1].ny + SEGS[i].ny;
+      const L = Math.hypot(nx,ny) || 1; nx /= L; ny /= L;
+      const d = nx*SEGS[i].nx + ny*SEGS[i].ny;   // mitre out to the true corner
+      if(d > 0.35){ nx /= d; ny /= d; }
+    }
+    NRM.push({x:nx, y:ny});
+  }
+})();
+function corridorPath(shrink, ext){
+  ext = ext || 0;
+  const g0 = SEGS[0], gN = SEGS[SEGS.length-1], last = NODES.length-1;
+  ctx.beginPath();
+  for(let pass=0; pass<2; pass++){
+    const sg = pass === 0 ? 1 : -1;
+    const from = pass === 0 ? 0 : last, to = pass === 0 ? last : 0, stp = pass === 0 ? 1 : -1;
+    for(let i=from; ; i+=stp){
+      const n = NRM[i], w = NODES[i].hw - shrink;
+      let x = NODES[i].x + n.x*w*sg, y = NODES[i].y + n.y*w*sg;
+      if(i === 0){ x -= g0.dx*ext; y -= g0.dy*ext; }
+      if(i === last){ x += gN.dx*ext; y += gN.dy*ext; }
+      const px = sx(x), py = sy(y);
+      if(pass === 0 && i === 0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+      if(i === to) break;
+    }
+  }
+  ctx.closePath();
+}
+
+// ---------- one-time street dressing ----------
+const PROPS = [];
+(function buildProps(){
+  let seed = 90210;
+  const rnd = ()=> (seed = (seed*1664525 + 1013904223) >>> 0) / 4294967296;
+  for(let s = 5; s < TOTAL_S - 4; s += 2.6 + rnd()*6.5){
+    const p = pathPoint(s);
+    const inner = p.hw - PAVE - 0.5;
+    const q = (rnd()*2 - 1) * inner;
+    const roll = rnd();
+    let pr;
+    if(roll < 0.14)      pr = { k:"manhole", s, q, rad:0.32 + rnd()*0.12 };
+    else if(roll < 0.26) pr = { k:"drain",   s, q:(q>0?1:-1)*(p.hw - PAVE - 0.3) };
+    else if(roll < 0.62) pr = { k:"patch",   s, q, w:1.2 + rnd()*2.8, h:0.7 + rnd()*1.7, tw:(rnd()-0.5)*0.7 };
+    else                 pr = { k:"crack",   s, q, w:1.2 + rnd()*3.2, tw:(rnd()-0.5)*1.6 };
+    pr.ang = p.ang + (pr.tw || 0);
+    const w = toWorld(s, pr.q); pr.x = w.x; pr.y = w.y;
+    PROPS.push(pr);
+  }
+})();
+
+const BLOCKS = [];
+(function buildBlocks(){
+  let seed = 4242;
+  const rnd = ()=> (seed = (seed*1664525 + 1013904223) >>> 0) / 4294967296;
+  for(const side of [1,-1]){
+    let s = -12;
+    while(s < TOTAL_S + 12){
+      const len = 5.5 + rnd()*8.5;
+      const dep = 7 + rnd()*10;
+      const mid = Math.max(0, Math.min(TOTAL_S, s + len/2));
+      const pm = pathPoint(mid);
+      // Seat the inner face on the building line, then push it out until no
+      // point along that face is inside the corridor. Blocks are straight and
+      // the street is not, so on the inside of a bend the naive offset would
+      // let a corner eat the road -- which the harness sweeps for.
+      let innerOff = pm.hw + 0.15;
+      for(let iter=0; iter<30; iter++){
+        let worst = 0;
+        for(let t=-1; t<=1.0001; t+=0.1){
+          const ex = pm.x + pm.dx*t*len/2 + pm.nx*side*innerOff;
+          const ey = pm.y + pm.dy*t*len/2 + pm.ny*side*innerOff;
+          const pr = project(ex,ey);
+          const need = pr.hw + 0.15 - Math.abs(pr.q);
+          if(need > worst) worst = need;
+        }
+        if(worst <= 0) break;
+        innerOff += worst + 0.02;
+      }
+      const off = innerOff + dep/2;
+      BLOCKS.push({
+        x: pm.x + pm.nx*side*off, y: pm.y + pm.ny*side*off, ang: pm.ang,
+        hl: len/2, hw: dep/2,
+        ht: 0.45 + rnd()*1.75,
+        warm: rnd() < 0.45,
+        seed: (rnd()*65536)|0
+      });
+      s += len + 0.3 + rnd()*1.4;
+    }
+  }
+})();
+
+function viewBounds(m){
+  const hx = (W/2)/PPM + m, hy = (H/2)/PPM + m;
+  return { x0:camX-hx, x1:camX+hx, y0:camY-hy, y1:camY+hy };
+}
+
+// ---------- ground ----------
+function drawGround(){
+  ctx.fillStyle = col('a'); ctx.fillRect(0,0,W,H);
+
+  // Pavement slab, then the kerb face, then the carriageway on top of it, so
+  // the 0.2 m band left showing between them reads as a raised kerb.
+  corridorPath(0, 1.0);      ctx.fillStyle = col('p'); ctx.fill();
+  corridorPath(PAVE-0.20, 1.0); ctx.fillStyle = col('K'); ctx.fill();
+
+  // Paving joints, drawn across the pavement ring.
+  ctx.save();
+  corridorPath(0, 1.0); ctx.clip();
+  ctx.strokeStyle = col('P'); ctx.lineWidth = Math.max(1, 0.05*PPM);
+  const vb = viewBounds(4);
+  for(let s = 0; s < TOTAL_S; s += 1.35){
+    const p = pathPoint(s);
+    if(p.x < vb.x0-6 || p.x > vb.x1+6 || p.y < vb.y0-6 || p.y > vb.y1+6) continue;
+    for(const sg of [1,-1]){
+      const ax = p.x + p.nx*sg*(p.hw-PAVE), ay = p.y + p.ny*sg*(p.hw-PAVE);
+      const bx = p.x + p.nx*sg*p.hw,        by = p.y + p.ny*sg*p.hw;
+      ctx.beginPath(); ctx.moveTo(sx(ax),sy(ay)); ctx.lineTo(sx(bx),sy(by)); ctx.stroke();
+    }
+  }
+  ctx.restore();
+
+  // Kerb top highlight, then the road.
+  corridorPath(PAVE-0.20, 1.0);
+  ctx.strokeStyle = col('k'); ctx.lineWidth = Math.max(1, 0.09*PPM); ctx.stroke();
+  corridorPath(PAVE, 1.0); ctx.fillStyle = col('d'); ctx.fill();
+
+  // Everything from here is road-surface detail, clipped to the carriageway.
+  ctx.save();
+  corridorPath(PAVE, 1.0); ctx.clip();
+
+  // Worn wheel tracks either side of the centreline.
+  ctx.strokeStyle = col('R'); ctx.lineWidth = Math.max(1, 0.85*PPM);
+  ctx.globalAlpha = 0.55;
+  for(const q of [1.05, -1.05]){
+    ctx.beginPath();
+    for(let s=0; s<=TOTAL_S; s+=4){
+      const w = toWorld(s, q);
+      if(s === 0) ctx.moveTo(sx(w.x),sy(w.y)); else ctx.lineTo(sx(w.x),sy(w.y));
+    }
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // Patches, cracks, manholes, gully grates.
+  for(const p of PROPS){
+    if(p.x < vb.x0 || p.x > vb.x1 || p.y < vb.y0 || p.y > vb.y1) continue;
+    if(p.k === "patch"){
+      inLocal(p.x, p.y, p.ang, ()=>{
+        fillKey(-p.w/2,-p.h/2, p.w/2, p.h/2, 'T', 0.25);
+        ctx.strokeStyle = col('Z'); ctx.lineWidth = 0.06;
+        rr(-p.w/2,-p.h/2,p.w,p.h,0.25); ctx.stroke();
+      });
+    } else if(p.k === "crack"){
+      inLocal(p.x, p.y, p.ang, ()=>{
+        ctx.strokeStyle = col('Z'); ctx.lineWidth = 0.055; ctx.beginPath();
+        ctx.moveTo(-p.w/2, 0);
+        ctx.lineTo(-p.w/6,  0.16);
+        ctx.lineTo( p.w/6, -0.13);
+        ctx.lineTo( p.w/2,  0.05);
+        ctx.stroke();
+      });
+    } else if(p.k === "manhole"){
+      const px = sx(p.x), py = sy(p.y);
+      ctx.beginPath(); ctx.arc(px,py,p.rad*PPM,0,6.2832);
+      ctx.fillStyle = col('Z'); ctx.fill();
+      ctx.beginPath(); ctx.arc(px,py,p.rad*0.74*PPM,0,6.2832);
+      ctx.fillStyle = col('T'); ctx.fill();
+    } else {
+      inLocal(p.x, p.y, p.ang, ()=>{
+        fillKey(-0.32,-0.20, 0.32, 0.20, 'Z', 0.05);
+        ctx.strokeStyle = col('D'); ctx.lineWidth = 0.045;
+        for(let i=-2;i<=2;i++){ ctx.beginPath(); ctx.moveTo(i*0.12,-0.17); ctx.lineTo(i*0.12,0.17); ctx.stroke(); }
+      });
+    }
+  }
+
+  // Centre line.
+  ctx.strokeStyle = col('l'); ctx.lineWidth = Math.max(1, 0.13*PPM);
+  ctx.globalAlpha = 0.72;
+  for(let s=0; s<TOTAL_S-2.6; s+=5){
+    const a = pathPoint(s), b = pathPoint(Math.min(TOTAL_S, s+2.6));
+    if(a.x < vb.x0 || a.x > vb.x1 || a.y < vb.y0 || a.y > vb.y1) continue;
+    ctx.beginPath(); ctx.moveTo(sx(a.x),sy(a.y)); ctx.lineTo(sx(b.x),sy(b.y)); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // Rubber laid down by the player.
+  if(skids.length){
+    ctx.strokeStyle = shade(0.30); ctx.lineWidth = Math.max(1, 0.26*PPM);
+    ctx.beginPath();
+    for(const k of skids){
+      if(k.x0 < vb.x0 || k.x0 > vb.x1 || k.y0 < vb.y0 || k.y0 > vb.y1) continue;
+      ctx.moveTo(sx(k.x0),sy(k.y0)); ctx.lineTo(sx(k.x1),sy(k.y1));
+    }
+    ctx.stroke();
+  }
+
+  // Grain last, so it sits over the paint and the patches.
+  if(grain){
+    const t = grainSize;
+    const ox = -(((camX*PPM) % t) + t) % t, oy = -(((camY*PPM) % t) + t) % t;
+    ctx.save(); ctx.translate(ox, oy);
+    ctx.fillStyle = grain; ctx.fillRect(0,0,W+t*2,H+t*2);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// ---------- fake-3D buildings ----------
+// The prism silhouette is the footprint plus the roof translated away from
+// the camera. Draw the outward-facing walls, then drop the roof on top.
+function blockCorners(B){
+  const c = Math.cos(B.ang), s = Math.sin(B.ang), P = [];
+  const quad = [[1,1],[1,-1],[-1,-1],[-1,1]];
+  for(const [a,b] of quad)
+    P.push({ x:B.x + a*B.hl*c + b*B.hw*s, y:B.y + a*B.hl*s - b*B.hw*c });
+  return P;
+}
+function drawBlockShadows(){
+  const vb = viewBounds(30);
+  ctx.fillStyle = shade(0.26);
+  for(const B of BLOCKS){
+    if(B.x < vb.x0 || B.x > vb.x1 || B.y < vb.y0 || B.y > vb.y1) continue;
+    const P = blockCorners(B), dx = SUN_DX*B.ht*BLD_SH, dy = SUN_DY*B.ht*BLD_SH;
+    poly(P.concat([]).map(p=>({x:p.x+dx, y:p.y+dy})));
+    ctx.fill();
+  }
+}
+function drawBlocks(){
+  const vb = viewBounds(30);
+  for(const B of BLOCKS){
+    if(B.x < vb.x0 || B.x > vb.x1 || B.y < vb.y0 || B.y > vb.y1) continue;
+    const P = blockCorners(B);
+    let ox = (B.x-camX)*EXT*B.ht, oy = (B.y-camY)*EXT*B.ht;
+    const oL = Math.hypot(ox,oy);
+    if(oL > 6){ ox = ox/oL*6; oy = oy/oL*6; }
+    const offPx = Math.hypot(ox,oy)*PPM;
+    const wallKey = B.warm ? 'Q' : 'B', roofKey = B.warm ? 'q' : 'b';
+
+    for(let i=0;i<4;i++){
+      const A = P[i], Bp = P[(i+1)%4];
+      let ex = Bp.x-A.x, ey = Bp.y-A.y;
+      const L = Math.hypot(ex,ey) || 1;
+      let nx = ey/L, ny = -ex/L;
+      const mx = (A.x+Bp.x)/2, my = (A.y+Bp.y)/2;
+      if((mx-B.x)*nx + (my-B.y)*ny < 0){ nx = -nx; ny = -ny; }
+      if((mx-camX)*nx + (my-camY)*ny >= 0) continue;      // faces away: hidden behind the roof
+
+      poly([A, Bp, {x:Bp.x+ox, y:Bp.y+oy}, {x:A.x+ox, y:A.y+oy}]);
+      ctx.fillStyle = col(wallKey); ctx.fill();
+      const litness = -(nx*SUN_DX + ny*SUN_DY)/SUN_L;
+      if(litness > 0){ ctx.fillStyle = lite(0.11*litness); ctx.fill(); }
+      else           { ctx.fillStyle = shade(0.20*-litness); ctx.fill(); }
+
+      // Windows, only once the wall is big enough on screen to read as one.
+      if(offPx > 16 && L*PPM > 34){
+        const cols = Math.max(1, Math.round(L/2.3));
+        const rows = B.ht > 1.15 ? 3 : (B.ht > 0.72 ? 2 : 1);
+        for(let ci=0; ci<cols; ci++){
+          for(let ri=0; ri<rows; ri++){
+            const hh = hash2(B.seed + i*977, ci*31 + ri*7);
+            if(hh < 0.17) continue;
+            const on = hh > 0.80;
+            const u0 = (ci+0.26)/cols, u1 = (ci+0.74)/cols;
+            const v0 = (ri+0.20)/rows, v1 = (ri+0.70)/rows;
+            const pt = (u,v)=>({ x:A.x + ex*u + ox*v, y:A.y + ey*u + oy*v });
+            poly([pt(u0,v0), pt(u1,v0), pt(u1,v1), pt(u0,v1)]);
+            ctx.fillStyle = col(on ? 'j' : 'J'); ctx.fill();
+          }
+        }
+      }
+    }
+
+    // Roof.
+    const R = P.map(p=>({x:p.x+ox, y:p.y+oy}));
+    poly(R); ctx.fillStyle = col(roofKey); ctx.fill();
+    ctx.fillStyle = lite(0.05); ctx.fill();
+    poly(R); ctx.strokeStyle = col('i');
+    ctx.lineWidth = Math.max(1, 0.16*PPM); ctx.stroke();
+
+    // Rooftop clutter: a vent box and a tank, seeded so they never move.
+    if(offPx > 10){
+      const rc = { x:(R[0].x+R[2].x)/2, y:(R[0].y+R[2].y)/2 };
+      inLocal(rc.x, rc.y, B.ang, ()=>{
+        const a = hash2(B.seed, 5), b = hash2(B.seed, 9);
+        const bw = Math.min(B.hl*0.5, 1.4), bh = Math.min(B.hw*0.5, 1.2);
+        const px = (a-0.5)*B.hl*0.9, py = (b-0.5)*B.hw*0.9;
+        fillKey(px-bw/2, py-bh/2, px+bw/2, py+bh/2, 'i', 0.12);
+        ctx.fillStyle = shade(0.22);
+        rr(px-bw/2+0.12, py-bh/2+0.12, bw, bh, 0.12); ctx.fill();
+        if(hash2(B.seed,13) > 0.55){
+          const cx2 = -px*0.7, cy2 = -py*0.7;
+          ctx.beginPath(); ctx.arc(cx2, cy2, Math.min(0.6, B.hw*0.28), 0, 6.2832);
+          ctx.fillStyle = col('i'); ctx.fill();
+        }
+      });
+    }
+  }
+}
+
+// ---------- lighting helpers ----------
+// World (SUN_DX,SUN_DY) expressed in a body's local (forward,left) frame.
+// The local basis is its own inverse, so the same expression converts both ways.
+function sunLocal(ang, k){
+  const c = Math.cos(ang), s = Math.sin(ang);
+  return { a:(SUN_DX*c + SUN_DY*s)*k, b:(SUN_DX*s - SUN_DY*c)*k };
+}
+// A light-to-dark wash across a body, aligned to the world sun rather than
+// the body, so panels change tone as the bus swings round.
+function sunWash(ang, reach, up, down){
+  const sl = sunLocal(ang, reach);
+  let g;
+  try { g = ctx.createLinearGradient(-sl.a, -sl.b, sl.a, sl.b); } catch(e){ return null; }
+  if(!g || !g.addColorStop) return null;
+  g.addColorStop(0, lite(up));
+  g.addColorStop(0.52, "rgba(255,255,255,0)");
+  g.addColorStop(1, shade(down));
+  return g;
+}
+function beam(wx, wy, ang, len, spread, al){
+  const px = sx(wx), py = sy(wy);
+  let g;
+  try { g = ctx.createRadialGradient(px,py,0,px,py,Math.max(1,len*PPM)); } catch(e){ return; }
+  if(!g || !g.addColorStop) return;
+  g.addColorStop(0, "rgba(255,226,172,"+al+")");
+  g.addColorStop(0.55, "rgba(255,214,150,"+(al*0.45).toFixed(3)+")");
+  g.addColorStop(1, "rgba(255,206,140,0)");
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.beginPath(); ctx.moveTo(px,py);
+  for(let i=0;i<=12;i++){
+    const a = ang - spread/2 + spread*i/12;
+    ctx.lineTo(px + Math.cos(a)*len*PPM, py + Math.sin(a)*len*PPM);
+  }
+  ctx.closePath();
+  ctx.fillStyle = g; ctx.fill();
+  ctx.restore();
+}
+
+// ---------- vehicles ----------
+function wheel(a, b, len, wid, steerAng){
+  ctx.save();
+  ctx.translate(a,b);
+  if(steerAng) ctx.rotate(-steerAng);      // +steer turns right, i.e. toward -left
+  fillRR(-len/2, -wid/2, len/2, wid/2, col('t'), wid*0.42);
+  ctx.fillStyle = lite(0.07);
+  rr(-len/2, -wid/2, len, wid*0.4, wid*0.2); ctx.fill();
+  ctx.restore();
+}
+
+function drawBus(){
+  const bc = busCentre();
+  const sl = sunLocal(bus.h, 1.0);
+  const braking = input.down && bus.v > 0.3;
+  const foldL = clearL < 0.45, foldR = clearR < 0.45;
+
+  // Headlight wash on the road, before the body so the bus sits in it.
+  const hl = busLocal(WB + FRONT_OH, 0);
+  beam(hl.x, hl.y, bus.h, 13, 0.95, 0.085);
+
+  inLocal(bc.x, bc.y, bus.h, ()=>{
+    // Cast shadow. It carries the body roll so the bus reads as leaning into
+    // a turn, while the hull stays exactly where the collision hull is.
+    const roll = -bus.steer * Math.min(1, Math.abs(bus.v)/V_MAX) * 0.30;
+    ctx.fillStyle = shade(0.34);
+    rr(-6 + sl.a*0.9, -1.275 + sl.b*0.9 + roll, 12, 2.55, 0.55); ctx.fill();
+
+    // Running gear.
+    wheel( 3.5,  1.18, 1.30, 0.46, bus.steer);
+    wheel( 3.5, -1.18, 1.30, 0.46, bus.steer);
+    wheel(-2.5,  1.18, 1.36, 0.50, 0);
+    wheel(-2.5, -1.18, 1.36, 0.50, 0);
+
+    // Hull.
+    fillKey(-6,-1.275, 6,1.275, 'u', 0.55);
+    fillKey(-6,-1.275, 6,-0.94, 'U', 0.5);
+    fillKey(-6, 0.94,  6,1.275, 'U', 0.5);
+    ctx.fillStyle = shade(0.13);
+    rr(-5.55,-0.74, 11.1, 1.48, 0.34); ctx.fill();
+    fillKey(-3.4,-0.44,-2.2,0.44,'U',0.10);
+    fillKey( 1.4,-0.44, 2.6,0.44,'U',0.10);
+    fillKey(-5.85, 0.74, 5.85, 0.86, 'l', 0.05);
+    fillKey(-5.85,-0.86, 5.85,-0.74, 'l', 0.05);
+
+    // Glass.
+    fillKey( 4.32,-1.06, 5.74, 1.06, 'g', 0.32);
+    fillKey(-4.45,-1.20, 3.95,-0.88, 'g', 0.10);
+    fillKey(-4.45, 0.88, 3.95, 1.20, 'g', 0.10);
+    fillKey(-5.74,-0.96,-4.92, 0.96, 'G', 0.28);
+    ctx.fillStyle = lite(0.14);
+    rr(4.5, -0.98, 1.05, 0.30, 0.12); ctx.fill();
+    rr(-4.2, 0.90, 2.6, 0.12, 0.05); ctx.fill();
+
+    // Pillars, doors and panel seams.
+    fillKey(0.58,-1.275, 0.78, 1.275, 'U', 0.04);
+    fillKey(2.98,-1.275, 3.18, 1.275, 'U', 0.04);
+    ctx.strokeStyle = shade(0.13); ctx.lineWidth = 0.05;
+    for(const a of [-4.2,-1.6,1.9,4.2]){
+      ctx.beginPath(); ctx.moveTo(a,-1.20); ctx.lineTo(a,1.20); ctx.stroke();
+    }
+
+    // Destination blind, lamps.
+    fillKey(5.60,-0.84, 5.99, 0.84, 'h', 0.06);
+    ctx.fillStyle = shade(0.45); ctx.lineWidth = 0.05;
+    for(let i=-2;i<=2;i++){ ctx.beginPath(); ctx.moveTo(5.66,i*0.28); ctx.lineTo(5.93,i*0.28); ctx.stroke(); }
+    fillKey(5.56,-1.22, 6.0,-0.86, 's', 0.12);
+    fillKey(5.56, 0.86, 6.0, 1.22, 's', 0.12);
+    fillKey(-6.0,-1.22,-5.58,-0.86, 'r', 0.12);
+    fillKey(-6.0, 0.86,-5.58, 1.22, 'r', 0.12);
+    if(braking){
+      ctx.fillStyle = lite(0.42);
+      rr(-6.0,-1.22,0.42,0.36,0.12); ctx.fill();
+      rr(-6.0, 0.86,0.42,0.36,0.12); ctx.fill();
+    }
+
+    // Mirrors fold in when a flank gets tight -- a free, readable warning.
+    for(const side of [1,-1]){
+      const tip = side*((side>0?foldL:foldR) ? 1.52 : 1.94);
+      ctx.strokeStyle = col('t'); ctx.lineWidth = 0.085;
+      ctx.beginPath(); ctx.moveTo(5.16, side*1.22); ctx.lineTo(5.16, tip); ctx.stroke();
+      fillKey(5.00, tip - side*0.32, 5.32, tip, 'm', 0.06);
+    }
+
+    // Paint you have already lost.
+    for(const sc of bus.scrapes){
+      const a = Math.max(-5.8, Math.min(5.8, sc.a - 2.5));
+      fillKey(a-0.36, sc.side>0?1.02:-1.275, a+0.36, sc.side>0?1.275:-1.02, 'U', 0.05);
+    }
+
+    // Sun wash over the whole hull.
+    const g = sunWash(bus.h, 4.2, 0.17, 0.20);
+    if(g){ rr(-6,-1.275,12,2.55,0.55); ctx.fillStyle = g; ctx.fill(); }
+
+    // Proximity rail: the flank that is running out of room lights up.
+    for(const side of [1,-1]){
+      const cl = side > 0 ? clearL : clearR;
+      if(cl >= 0.75) continue;
+      const t = 1 - cl/0.75;
+      ctx.strokeStyle = cl < 0.28 ? col('r') : col('y');
+      ctx.globalAlpha = 0.35 + 0.55*t;
+      ctx.lineWidth = 0.09 + 0.10*t;
+      ctx.beginPath();
+      ctx.moveTo(-5.9, side*1.30); ctx.lineTo(5.9, side*1.30);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  });
+}
+
+// Shared four-wheeled body. opts: glassFwd, cabinFrom, brake, head, hazard.
+function drawRig(x,y,ang,hl,hw,tint,sh,opts){
+  opts = opts || {};
+  const sl = sunLocal(ang, 1.0);
+  if(opts.head){
+    const c = Math.cos(ang), s = Math.sin(ang);
+    beam(x + hl*c, y + hl*s, ang, 9, 0.9, 0.06);
+  }
+  inLocal(x, y, ang, ()=>{
+    ctx.fillStyle = shade(0.30);
+    rr(-hl + sl.a*0.75, -hw + sl.b*0.75, hl*2, hw*2, hw*0.42); ctx.fill();
+
+    const wa = hl*0.62, ww = hw*0.98;
+    wheel( wa,  ww, hl*0.30, hw*0.26, 0);
+    wheel( wa, -ww, hl*0.30, hw*0.26, 0);
+    wheel(-wa,  ww, hl*0.30, hw*0.26, 0);
+    wheel(-wa, -ww, hl*0.30, hw*0.26, 0);
+
+    fillKey(-hl,-hw, hl,hw, tint, hw*0.44);
+    fillKey(-hl,-hw, hl,-hw*0.70, sh, hw*0.34);
+    fillKey(-hl, hw*0.70, hl, hw, sh, hw*0.34);
+
+    const c0 = opts.cabinFrom !== undefined ? opts.cabinFrom : -hl*0.36;
+    const c1 = opts.cabinTo   !== undefined ? opts.cabinTo   :  hl*0.50;
+    fillKey(c0,-hw*0.80, c1, hw*0.80, sh, hw*0.30);
+    fillKey(c1-0.05,-hw*0.70, c1+hl*0.16, hw*0.70, 'g', hw*0.24);       // windscreen
+    if(!opts.blind) fillKey(c0-hl*0.14,-hw*0.66, c0+0.05, hw*0.66, 'G', hw*0.22);
+
+    if(opts.head){
+      fillKey(hl-hl*0.06,-hw*0.94, hl, -hw*0.52, 's', hw*0.14);
+      fillKey(hl-hl*0.06, hw*0.52, hl,  hw*0.94, 's', hw*0.14);
+    }
+    fillKey(-hl,-hw*0.94, -hl+hl*0.06, -hw*0.52, 'r', hw*0.14);
+    fillKey(-hl, hw*0.52, -hl+hl*0.06,  hw*0.94, 'r', hw*0.14);
+
+    if(opts.hazard){
+      for(const ax of [[hl-hl*0.13, hl],[-hl, -hl+hl*0.13]])
+        for(const by of [[-hw,-hw*0.55],[hw*0.55,hw]])
+          fillKey(ax[0],by[0],ax[1],by[1],'h', hw*0.12);
+    }
+    if(opts.blink){
+      for(const ax of [[hl-hl*0.28, hl-hl*0.04],[-hl+hl*0.04, -hl+hl*0.28]])
+        for(const by of [[-hw*0.98,-hw*0.52],[hw*0.52,hw*0.98]])
+          fillKey(ax[0],by[0],ax[1],by[1],'h', hw*0.12);
+    }
+
+    const g = sunWash(ang, hl*0.8, 0.15, 0.18);
+    if(g){ rr(-hl,-hw,hl*2,hw*2,hw*0.44); ctx.fillStyle = g; ctx.fill(); }
+  });
+}
+
+function drawBin(b){
+  const sl = sunLocal(b.ang, 1.0);
+  inLocal(b.x, b.y, b.ang, ()=>{
+    ctx.fillStyle = shade(0.28);
+    ctx.beginPath(); ctx.arc(sl.a*0.6, sl.b*0.6, b.r, 0, 6.2832); ctx.fill();
+    ctx.beginPath(); ctx.arc(0,0,b.r,0,6.2832); ctx.fillStyle = col('n'); ctx.fill();
+    ctx.beginPath(); ctx.arc(0,0,b.r*0.72,0,6.2832); ctx.fillStyle = col('N'); ctx.fill();
+    ctx.strokeStyle = shade(0.30); ctx.lineWidth = 0.05;
+    ctx.beginPath(); ctx.moveTo(-b.r*0.7,0); ctx.lineTo(b.r*0.7,0); ctx.stroke();
+  });
+}
+
+// ---------- render-only effects ----------
+// Driven by the real frame delta, never by update(), so none of this can
+// perturb the simulation.
+const puffs = [], dust = [], skids = [];
+let emitT = 0, lastRear = null, zoomEase = 1;
+
+function fxUpdate(rdt){
+  // Exhaust while pulling away.
+  emitT -= rdt;
+  if(input.up && Math.abs(bus.v) < 9 && emitT <= 0){
+    emitT = 0.07;
+    const p = busLocal(-REAR_OH - 0.2, -0.95);
+    puffs.push({ x:p.x, y:p.y, r:0.20, a:1,
+                 vx:-Math.cos(bus.h)*0.7 + (Math.random()-0.5)*0.5,
+                 vy:-Math.sin(bus.h)*0.7 + (Math.random()-0.5)*0.5 });
+  }
+  for(let i=puffs.length-1;i>=0;i--){
+    const p = puffs[i];
+    p.x += p.vx*rdt; p.y += p.vy*rdt; p.r += 0.85*rdt; p.a -= 0.62*rdt;
+    if(p.a <= 0) puffs.splice(i,1);
+  }
+
+  // Kerb dust: mounting the pavement should look as rough as it sounds.
+  if(Math.abs(bus.v) > 1.4){
+    for(const a of [-REAR_OH, WB+FRONT_OH]) for(const b of [-BUS_HW, BUS_HW]){
+      const p = busLocal(a,b), pr = project(p.x,p.y);
+      if(Math.abs(pr.q) > pr.hw - PAVE && Math.random() < 0.30)
+        dust.push({ x:p.x, y:p.y, r:0.10, a:1,
+                    vx:(Math.random()-0.5)*1.6, vy:(Math.random()-0.5)*1.6 });
+    }
+  }
+  for(let i=dust.length-1;i>=0;i--){
+    const p = dust[i];
+    p.x += p.vx*rdt; p.y += p.vy*rdt; p.r += 0.55*rdt; p.a -= 1.5*rdt;
+    if(p.a <= 0) dust.splice(i,1);
+  }
+
+  // Rubber under braking.
+  if(input.down && bus.v > 3.5){
+    const L = busLocal(0, 1.18), R = busLocal(0, -1.18);
+    if(lastRear){
+      skids.push({x0:lastRear.L.x, y0:lastRear.L.y, x1:L.x, y1:L.y});
+      skids.push({x0:lastRear.R.x, y0:lastRear.R.y, x1:R.x, y1:R.y});
+      while(skids.length > 600) skids.shift();
+    }
+    lastRear = {L,R};
+  } else lastRear = null;
+
+  const target = 1 - 0.055*Math.min(1, Math.abs(bus.v)/V_MAX);
+  zoomEase += (target - zoomEase) * Math.min(1, rdt*3.5);
+}
+
+function drawSoftDots(list, r, g, b){
+  for(const p of list){
+    const a = Math.max(0, Math.min(1, p.a));
+    ctx.beginPath();
+    ctx.arc(sx(p.x), sy(p.y), Math.max(0.5, p.r*PPM), 0, 6.2832);
+    ctx.fillStyle = "rgba("+r+","+g+","+b+","+(a*0.34).toFixed(3)+")";
+    ctx.fill();
+  }
+}
+function drawSparks(){
+  if(!sparks.length) return;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.fillStyle = col('s');
+  for(const p of sparks){
+    const a = Math.max(0, Math.min(1, p.life/0.40));
+    ctx.globalAlpha = a;
+    ctx.beginPath();
+    ctx.arc(sx(p.x), sy(p.y), (0.09 + (1-a)*0.11)*PPM, 0, 6.2832);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ---------- swept-path ghost ----------
+// Same projection as the prototype, drawn as a ribbon between the two rear
+// corners instead of dotted lines. Tail swing is only fair if it is knowable.
+function drawGhostHD(){
+  let rx = bus.rx, ry = bus.ry, h = bus.h;
+  const dir = bus.v < -0.2 ? -1 : 1;
+  const v = Math.max(Math.abs(bus.v), 2.6) * dir;
+  const N = 20, dt = 0.9/N, tan = Math.tan(bus.steer);
+  const L = [], R = [];
+  for(let i=0;i<N;i++){
+    rx += v*dt*Math.cos(h); ry += v*dt*Math.sin(h); h += v*dt*tan/WB;
+    const c = Math.cos(h), s = Math.sin(h), a = -REAR_OH;
+    L.push({ x:rx + a*c + BUS_HW*s, y:ry + a*s - BUS_HW*c });
+    R.push({ x:rx + a*c - BUS_HW*s, y:ry + a*s + BUS_HW*c });
+  }
+  ctx.save();
+  poly(L.concat(R.slice().reverse()));
+  ctx.fillStyle = col('e'); ctx.globalAlpha = 0.13; ctx.fill();
+  ctx.globalAlpha = 0.55; ctx.strokeStyle = col('e');
+  ctx.lineWidth = Math.max(1, 0.06*PPM);
+  for(const side of [L,R]){
+    ctx.beginPath();
+    for(let i=0;i<side.length;i++){
+      const px = sx(side[i].x), py = sy(side[i].y);
+      if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.stroke();
+  }
+  // Where the whole bus ends up in 0.9 s.
+  const c = Math.cos(h), s = Math.sin(h), cor = [];
+  for(const a of [-REAR_OH, WB+FRONT_OH]) for(const b of [BUS_HW,-BUS_HW])
+    cor.push({ x:rx + a*c + b*s, y:ry + a*s - b*c });
+  poly([cor[0],cor[1],cor[3],cor[2]]);
+  ctx.globalAlpha = 0.7; ctx.lineWidth = Math.max(1, 0.07*PPM); ctx.stroke();
+  ctx.restore();
+}
+
+// ---------- HUD ----------
+const topbarEl = document.getElementById("topbar");
+function hudFont(px, weight){
+  ctx.font = (weight||700) + " " + Math.round(px) + "px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+}
+function label(str, x, y, key, px, align, weight){
+  hudFont(px, weight);
+  ctx.textAlign = align || "left";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = col(key);
+  ctx.fillText(str, x, y);
+}
+function panel(x,y,w,h,r){
+  rr(x,y,w,h,r === undefined ? 10 : r);
+  ctx.fillStyle = "rgba(10,12,16,0.60)"; ctx.fill();
+  ctx.strokeStyle = "rgba(160,175,195,0.20)"; ctx.lineWidth = 1; ctx.stroke();
+}
+function hudTop(){
+  let t = 56;
+  if(topbarEl && topbarEl.getBoundingClientRect){
+    const r = topbarEl.getBoundingClientRect();
+    if(r && r.height) t = r.height + 8;
+  }
+  return t;
+}
+
+function drawHUDHD(){
+  const U  = Math.max(11, Math.min(VW,VH) * 0.024);
+  const bp = busS();
+
+  // Progress hairline along the very top edge.
+  const frac = Math.max(0, Math.min(1, bp.s/TOTAL_S));
+  ctx.fillStyle = "rgba(255,255,255,0.10)"; ctx.fillRect(0,0,VW,3);
+  ctx.fillStyle = col('h'); ctx.fillRect(0,0,VW*frac,3);
+
+  // One strip under the chrome: speed, distance, clearance.
+  const py = hudTop(), ph = U*2.9, pw = Math.min(VW - 24, Math.max(330, U*30));
+  const px = (VW - pw)/2;
+  panel(px, py, pw, ph, 12);
+
+  const kmh = Math.abs(bus.v)*3.6;
+  const mid = py + ph/2;
+  const spd = "" + (kmh|0);
+  hudFont(U*1.55, 800);
+  const spdW = ctx.measureText(spd).width;
+  label(spd, px + U*0.9, mid, 'x', U*1.55, "left", 800);
+  label("KM/H", px + U*0.9 + spdW + U*0.45, mid + U*0.30, 'X', U*0.60, "left", 700);
+  if(bus.v < -0.2) label("REV", px + U*0.9 + spdW + U*0.45, mid - U*0.55, 'y', U*0.60, "left", 800);
+
+  label((bp.s|0) + " / " + (TOTAL_S|0) + " M", px + pw/2, mid, 'X', U*0.78, "center", 700);
+
+  // Clearance: left flank on the left of the pair, right on the right.
+  const bw = U*4.4, bh = U*0.62, bx = px + pw - U*0.9 - bw*2 - U*0.6;
+  let i = 0;
+  for(const cfg of [{v:clearL, tag:"L"}, {v:clearR, tag:"R"}]){
+    const gx = bx + i*(bw + U*0.6);
+    const f  = Math.max(0, Math.min(1, cfg.v/CLEAR_CAP));
+    const k  = cfg.v < 0.28 ? 'r' : (cfg.v < 0.75 ? 'y' : 'x');
+    label(cfg.tag, gx, mid - U*0.72, 'X', U*0.60, "left", 700);
+    fillRR(gx, mid - U*0.1, gx + bw, mid - U*0.1 + bh, "rgba(255,255,255,0.14)", bh/2);
+    fillRR(gx, mid - U*0.1, gx + Math.max(bh, bw*f), mid - U*0.1 + bh, col(k), bh/2);
+    label(Math.round(Math.min(cfg.v, CLEAR_CAP)*100) + (cfg.v >= CLEAR_CAP ? "+" : "") + "CM",
+          gx + bw, mid + U*0.95, 'X', U*0.55, "right", 700);
+    i++;
+  }
+
+  // What the oncoming car has decided, spelled out.
+  let intent = null, ikey = 'h';
+  if(car.mode === "wait")          { intent = "CAR WAITING  —  PRESS HORN"; ikey = 'h'; }
+  else if(car.mode === "backing")  { intent = "CAR BACKING UP FOR YOU";          ikey = 'e'; }
+  else if(car.mode === "yield")    { intent = "CAR YIELDING";                    ikey = 'e'; }
+  else if(car.mode === "telegraph"){ intent = "CAR THINKING…";              ikey = 'y'; }
+  if(intent){
+    hudFont(U*0.80, 800);
+    const tw = ctx.measureText(intent).width, bx2 = (VW - tw)/2 - U*0.9;
+    panel(bx2, py + ph + U*0.7, tw + U*1.8, U*2.0, 10);
+    label(intent, VW/2, py + ph + U*0.7 + U, ikey, U*0.80, "center", 800);
+  }
+
+  // Squeeze: live gap while inside it, then a result card on the way out.
+  if(squeezing){
+    const g = Math.min(clearL, clearR);
+    hudFont(U*1.05, 800);
+    const s2 = "GAP " + Math.round(g*100) + " CM";
+    const tw = ctx.measureText(s2).width;
+    panel((VW-tw)/2 - U*0.9, VH*0.30 - U*1.1, tw + U*1.8, U*2.2, 11);
+    label(s2, VW/2, VH*0.30, g < 0.28 ? 'r' : 'y', U*1.05, "center", 800);
+  }
+  if(squeezeFlash > 0){
+    const t = Math.max(0, Math.min(1, squeezeFlash/1.1));
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, t*2.2);
+    const sc = 1 + (1-t)*0.10;
+    hudFont(U*1.9*sc, 800);
+    const s3 = "SQUEEZE  " + Math.round(squeezeFlashVal*100) + " CM";
+    const tw = ctx.measureText(s3).width;
+    panel((VW-tw)/2 - U*1.2, VH*0.62 - U*1.7, tw + U*2.4, U*3.2, 14);
+    label(s3, VW/2, VH*0.62, 'y', U*1.9*sc, "center", 800);
+    ctx.restore();
+  }
+}
+
+// Mood + squeeze vignette, drawn over the world and under the HUD.
+function drawVignette(){
+  const r0 = Math.min(VW,VH)*0.32, r1 = Math.hypot(VW,VH)*0.56;
+  let g;
+  try { g = ctx.createRadialGradient(VW/2,VH/2,r0,VW/2,VH/2,r1); } catch(e){ g = null; }
+  if(g && g.addColorStop){
+    g.addColorStop(0, "rgba(0,0,0,0)");
+    g.addColorStop(1, "rgba(4,6,10,0.46)");
+    ctx.fillStyle = g; ctx.fillRect(0,0,VW,VH);
+  }
+  if(squeezing){
+    const t = Math.max(0, Math.min(1, 1 - Math.min(clearL,clearR)/0.75));
+    let g2;
+    try { g2 = ctx.createRadialGradient(VW/2,VH/2,r0*(1-0.35*t),VW/2,VH/2,r1); } catch(e){ g2 = null; }
+    if(g2 && g2.addColorStop){
+      const c = Math.min(clearL,clearR) < 0.28 ? "255,74,61" : "255,181,36";
+      g2.addColorStop(0, "rgba("+c+",0)");
+      g2.addColorStop(1, "rgba("+c+","+(0.10 + 0.30*t).toFixed(3)+")");
+      ctx.fillStyle = g2; ctx.fillRect(0,0,VW,VH);
+    }
+  }
+}
+
+// ---------- frame ----------
+function render(rdt){
+  rdt = Math.max(0, Math.min(0.1, rdt === undefined ? 1/60 : rdt));
+  fxUpdate(rdt);
+
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.fillStyle = col('a'); ctx.fillRect(0,0,VW,VH);
+
+  ctx.save();
+  if(rot90){ ctx.translate(VW,0); ctx.rotate(Math.PI/2); }
+  ctx.translate(W/2,H/2); ctx.scale(zoomEase,zoomEase); ctx.translate(-W/2,-H/2);
+
+  drawGround();
+  drawBlockShadows();
+  drawBlocks();
+
+  for(const b of bins) drawBin(b);
+  for(const o of obstacles){
+    if(o.kind === "van")
+      drawRig(o.x,o.y,o.ang, VAN_L/2, VAN_W/2, 'v','V',
+              { cabinFrom:0.30, cabinTo:1.55, blind:true, hazard:o.hazard && ((frameNo>>4)&1) });
+    else
+      drawRig(o.x,o.y,o.ang, CAR_L/2, CAR_W/2, 'c','C', {});
+  }
+  const blinkOn = (car.mode==="telegraph"||car.mode==="backing"||car.mode==="yield"||car.mode==="wait")
+                  && ((frameNo>>3)&1);
+  drawRig(car.x, car.y, car.ang, CAR_L/2, CAR_W/2, 'o','O', { head:true, blink:blinkOn });
+
+  drawSoftDots(dust, 168, 162, 148);
+  if(showGhost) drawGhostHD();
+  drawBus();
+  drawSoftDots(puffs, 186, 192, 202);
+  drawSparks();
+  ctx.restore();
+
+  // The waiting car's marker lives in screen space so it never shrinks away.
+  if(car.mode === "wait" && ((frameNo>>3)&1)){
+    const U = Math.max(11, Math.min(VW,VH)*0.024);
+    const lx = sx(car.x), ly = sy(car.y);
+    label("!", devX(lx,ly), devY(lx,ly) - U*2.4, 'y', U*2.0, "center", 800);
+  }
+
+  drawVignette();
+  drawHUDHD();
+}
+
+// ============================================================
+// Audio -- verbatim from bus.html, lazily created on first tap.
+// ============================================================
+let muted = localStorage.getItem("bus4k_mute")==="1";
+let actx = null, eng = null, engGain = null, sqOsc = null, sqGain = null;
+function audioInit(){
+  if(actx) return;
+  try{ actx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ actx = null; return; }
+  try{
+    eng = actx.createOscillator(); engGain = actx.createGain();
+    eng.type = "sawtooth"; eng.frequency.value = 48; engGain.gain.value = 0;
+    eng.connect(engGain); engGain.connect(actx.destination); eng.start();
+    sqOsc = actx.createOscillator(); sqGain = actx.createGain();
+    sqOsc.type = "sine"; sqOsc.frequency.value = 400; sqGain.gain.value = 0;
+    sqOsc.connect(sqGain); sqGain.connect(actx.destination); sqOsc.start();
+  }catch(e){}
+}
+function beep(freq,dur,type,vol){
+  if(muted||!actx) return;
+  try{
+    const o=actx.createOscillator(), g=actx.createGain();
+    o.type=type||"square"; o.frequency.value=freq; g.gain.value=vol||0.05;
+    o.connect(g); g.connect(actx.destination);
+    const t=actx.currentTime; o.start(t);
+    g.gain.setValueAtTime(vol||0.05,t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.stop(t+dur);
+  }catch(e){}
+}
+function engineUpdate(v){
+  if(!actx||!eng) return;
+  try{
+    const t = actx.currentTime;
+    eng.frequency.setTargetAtTime(40 + Math.abs(v)*6.2, t, 0.09);
+    engGain.gain.setTargetAtTime(muted?0:(0.010 + Math.min(Math.abs(v)/V_MAX,1)*0.026), t, 0.12);
+  }catch(e){}
+}
+function sSqueeze(g){
+  if(!actx||!sqOsc) return;
+  try{
+    const t = actx.currentTime;
+    sqOsc.frequency.setTargetAtTime(420 + (0.75-g)*900, t, 0.05);
+    sqGain.gain.setTargetAtTime(muted?0:0.016, t, 0.06);
+  }catch(e){}
+}
+function sSqueezeOff(){ if(actx&&sqGain){ try{ sqGain.gain.setTargetAtTime(0, actx.currentTime, 0.08); }catch(e){} } }
+function sHorn(){ beep(233,0.42,"sawtooth",0.05); beep(311,0.42,"square",0.035); }
+function sBump(i){ beep(90+Math.random()*40, Math.min(0.22,0.06+i*0.02), "sawtooth", 0.05); }
+function sBin(){ beep(320+Math.random()*260, 0.05, "square", 0.035); }
+function sChime(){ beep(880,0.07); setTimeout(()=>beep(1320,0.09),70); }
+
+// ============================================================
+// Input
+// ============================================================
+const body = document.body;
+function markTouch(){ if(body && body.classList) body.classList.add("touch"); }
+window.addEventListener("touchstart", markTouch, {passive:true});
+
+function bindHold(id,key){
+  const el = document.getElementById(id); if(!el) return;
+  const on=e=>{ e.preventDefault(); input[key]=true; audioInit(); wake(); };
+  const off=e=>{ e.preventDefault(); input[key]=false; };
+  el.addEventListener("pointerdown",on); el.addEventListener("pointerup",off);
+  el.addEventListener("pointerleave",off); el.addEventListener("pointercancel",off);
+}
+bindHold("up","up"); bindHold("down","down"); bindHold("left","left"); bindHold("right","right");
+function pressHorn(){ audioInit(); wake(); if(!input.horn){ input.horn=true; input.hornEdge=true; } }
+const hornBtn = document.getElementById("horn");
+if(hornBtn){
+  hornBtn.addEventListener("pointerdown",e=>{ e.preventDefault(); pressHorn(); });
+  hornBtn.addEventListener("pointerup",e=>{ e.preventDefault(); input.horn=false; });
+  hornBtn.addEventListener("pointerleave",e=>{ input.horn=false; });
+}
+const KEYMAP = {ArrowLeft:"left",ArrowRight:"right",ArrowUp:"up",ArrowDown:"down",
+                a:"left",d:"right",w:"up",s:"down",A:"left",D:"right",W:"up",S:"down"};
+window.addEventListener("keydown",e=>{
+  if(KEYMAP[e.key]){ input[KEYMAP[e.key]]=true; e.preventDefault(); hideHint(); wake(); }
+  if(e.key===" "){ if(!e.repeat) pressHorn(); e.preventDefault(); hideHint(); }
+  if(e.key==="r"||e.key==="R") resetAll();
+  if(e.key==="f"||e.key==="F") toggleFull();
+});
+window.addEventListener("keyup",e=>{
+  if(KEYMAP[e.key]){ input[KEYMAP[e.key]]=false; e.preventDefault(); }
+  if(e.key===" ") input.horn=false;
+});
+
+// The chrome fades out of the way once you are actually driving, and comes
+// back the moment you reach for it.
+const varsEl = document.getElementById("variants");
+let idleT = 0;
+function wake(){
+  idleT = 0;
+  if(topbarEl && topbarEl.classList) topbarEl.classList.remove("dim");
+  if(varsEl && varsEl.classList) varsEl.classList.remove("dim");
+}
+window.addEventListener("pointermove", wake);
+window.addEventListener("pointerdown", wake);
+const hintEl = document.getElementById("keyhint");
+let hintTimer = null;
+function hideHint(){
+  if(!hintEl || !hintEl.classList || hintTimer) return;
+  hintTimer = setTimeout(()=>{ if(hintEl.classList) hintEl.classList.add("gone"); }, 1200);
+}
+
+function toggleFull(){
+  try{
+    if(!document.fullscreenElement && document.documentElement.requestFullscreen)
+      document.documentElement.requestFullscreen();
+    else if(document.exitFullscreen) document.exitFullscreen();
+  }catch(e){}
+}
+
+const palBtn = document.getElementById("palBtn");
+function refreshPal(){ if(palBtn) palBtn.textContent = PAL_LABEL[palMode]; }
+if(palBtn) palBtn.addEventListener("click",()=>{
+  palMode = PAL_ORDER[(PAL_ORDER.indexOf(palMode)+1)%PAL_ORDER.length];
+  localStorage.setItem("bus4k_pal3",palMode); refreshPal();
+});
+refreshPal();
+
+const zoomBtn = document.getElementById("zoomBtn");
+function refreshZoom(){ if(zoomBtn) zoomBtn.textContent = ZOOMS[zoomStep].toFixed(1) + "\u00d7"; }
+if(zoomBtn) zoomBtn.addEventListener("click",()=>{
+  zoomStep = (zoomStep+1) % ZOOMS.length;
+  localStorage.setItem("bus4k_zoom", ""+zoomStep);
+  resize(); updateCam(0,true); refreshZoom();
+});
+{
+  const z = parseInt(localStorage.getItem("bus4k_zoom"),10);
+  if(z >= 0 && z < ZOOMS.length) zoomStep = z;
+}
+refreshZoom();
+
+const muteBtn = document.getElementById("muteBtn");
+function refreshMute(){ if(muteBtn) muteBtn.textContent = muted?"MUTED":"SOUND"; }
+if(muteBtn) muteBtn.addEventListener("click",()=>{
+  muted=!muted; localStorage.setItem("bus4k_mute",muted?"1":"0"); audioInit();
+  if(muted) sSqueezeOff();
+  refreshMute();
+});
+refreshMute();
+const ghostBtn = document.getElementById("ghostBtn");
+function refreshGhost(){
+  if(!ghostBtn) return;
+  ghostBtn.textContent = "GHOST";
+  if(ghostBtn.classList){ if(showGhost) ghostBtn.classList.add("on"); else ghostBtn.classList.remove("on"); }
+}
+if(ghostBtn) ghostBtn.addEventListener("click",()=>{ showGhost=!showGhost; refreshGhost(); });
+refreshGhost();
+const resetBtn = document.getElementById("resetBtn");
+if(resetBtn) resetBtn.addEventListener("click",()=>resetAll());
+
+document.addEventListener("touchmove",e=>e.preventDefault(),{passive:false});
+document.addEventListener("gesturestart",e=>e.preventDefault());
+document.addEventListener("dblclick",e=>e.preventDefault());
+window.addEventListener("resize", ()=>{ resize(); updateCam(0,true); });
+window.addEventListener("orientationchange", ()=>{ resize(); updateCam(0,true); });
+
+// ============================================================
+// Boot / reset
+// ============================================================
+function resetAll(){
+  buildWorld(); resetBus(); spawnCar();
+  sparks.length = 0; shake = 0; hitCount = 0;
+  squeezing = false; squeezeFlash = 0; squeezeDirty = false; timeScale = 1;
+  clearL = clearR = CLEAR_CAP;
+  puffs.length = 0; dust.length = 0; skids.length = 0; lastRear = null;
+  updateCam(0, true);
+}
+resize();
+resetAll();
+
+const STEP = 1000/60; let acc = 0, last = performance.now();
+function frame(now){
+  const raw = now - last;
+  acc += raw; last = now; if(acc > 200) acc = 200;
+  while(acc >= STEP){ update(); acc -= STEP; }
+  idleT += raw/1000;
+  if(idleT > 3.5 && Math.abs(bus.v) > 1.5){
+    if(topbarEl && topbarEl.classList) topbarEl.classList.add("dim");
+    if(varsEl && varsEl.classList) varsEl.classList.add("dim");
+  }
+  render(Math.min(0.1, raw/1000));
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---------- Headless test handle ----------
+if(typeof window!=="undefined" && window.__busHook){
+  window.__busHook({
+    bus, car, input,
+    obstacles:()=>obstacles, bins:()=>bins, segs:()=>SEGS, totalS:()=>TOTAL_S,
+    project, pathPoint, toWorld, busCentre, busOBB, busLocal, busS, freeInterval,
+    clearances:()=>({l:clearL, r:clearR}), squeezing:()=>squeezing,
+    hits:()=>hitCount, single:()=>update(), step:n=>{ for(let i=0;i<(n||60);i++) update(); },
+    render, reset:resetAll, spawnCar,
+    setPal:p=>{ palMode = p; }, getPal:()=>palMode,
+    setGhost:b=>{ showGhost = b; },
+    setNoclip:b=>{ noClip = b; },
+    place:(s,q,dh)=>{ const w = toWorld(s,q); bus.rx=w.x; bus.ry=w.y; bus.h=w.ang+(dh||0); bus.v=0;
+                      bus.steerNorm=0; bus.steer=0; updateCam(0,true); },
+    honk:()=>{ input.hornEdge = true; },
+    keys:()=>({ tone:KEY_TONE, gbc:GBC }),
+    blocks:()=>BLOCKS, props:()=>PROPS,
+    viewport:()=>({VW,VH,W,H,DPR,PPM,PPM_BASE,rot90,zoom:ZOOMS[zoomStep]}),
+    setZoomStep:i=>{ zoomStep=i; resize(); },
+    resize,
+    consts:{BUS_L,BUS_W,WB,FRONT_OH,REAR_OH,STEER_MAX,PPM,W,H,NEED_BOTH,CLEAR_CAP,
+            VARIANT:"4k", VIEW_X_M, VIEW_Y_M}
+  });
+}
+
+})();
+</script>
+</body>
+</html>

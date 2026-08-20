@@ -89,7 +89,7 @@ whose collision box extends past both axles:
 | Wheelbase | 6.0 m | Big turning circle — that's the point |
 | Front overhang | 2.5 m | Front corner scythes wide too |
 | **Rear overhang** | **3.5 m** | **The signature mechanic** |
-| Kerb-to-kerb circle | ~11–12 m | Forces multi-point turns in tight streets |
+| Kerb-to-kerb circle | ~22 m (11 m radius) | Forces multi-point turns in tight streets |
 
 The moment this buys you: *you clear the corner perfectly and demolish a fruit stand with
 your arse.* Build the game around that moment. It is the thing nobody else's driving

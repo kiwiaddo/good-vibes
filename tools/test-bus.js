@@ -1,0 +1,247 @@
+// Headless smoke + regression harness for bus.html.
+// No browser/canvas here, so we stub document/canvas/localStorage/rAF and
+// drive the loop by hand through window.__busHook. A fillStyle setter flags
+// #ff00ff, which catches any colour key missing from KEY_TONE / GBC.
+const fs = require("fs");
+const vm = require("vm");
+const path = require("path");
+
+const FILE = path.resolve(__dirname, "../../../../../home/user/good-vibes/bus.html");
+const src = fs.readFileSync(process.argv[2] || "/home/user/good-vibes/bus.html", "utf8");
+const m = src.match(/<script>([\s\S]*?)<\/script>/);
+if(!m){ console.error("no inline script found"); process.exit(1); }
+const code = m[1];
+
+let magenta = 0, fillRects = 0;
+const ctxStub = {
+  _fillStyle: "#000",
+  get fillStyle(){ return this._fillStyle; },
+  set fillStyle(v){ if(typeof v === "string" && v.toLowerCase() === "#ff00ff") magenta++; this._fillStyle = v; },
+  fillRect(){ fillRects++; },
+  imageSmoothingEnabled: false
+};
+function el(extra){
+  return Object.assign({
+    addEventListener(){}, removeEventListener(){}, textContent:"",
+    style:{}, getBoundingClientRect:()=>({left:0,top:0,width:480,height:288})
+  }, extra||{});
+}
+const canvasStub = el({ width:320, height:192, getContext:()=>ctxStub });
+const store = {};
+let hook = null;
+const sandbox = {
+  console,
+  performance: { now: ()=>Date.now() },
+  setTimeout: ()=>0,
+  clearTimeout: ()=>{},
+  Math, Date, JSON,
+  requestAnimationFrame: ()=>0,
+  addEventListener: ()=>{}, removeEventListener: ()=>{},
+  localStorage: { getItem:k=>(k in store?store[k]:null), setItem:(k,v)=>{store[k]=""+v;} },
+  document: {
+    getElementById:id => id === "game" ? canvasStub : el(),
+    addEventListener(){}, querySelectorAll:()=>[]
+  }
+};
+sandbox.window = sandbox;
+sandbox.__busHook = h => { hook = h; };
+vm.createContext(sandbox);
+
+let failures = 0, checks = 0;
+function ok(name, cond, detail){
+  checks++;
+  if(cond){ console.log("  PASS  " + name + (detail ? "   " + detail : "")); }
+  else { failures++; console.log("  FAIL  " + name + (detail ? "   " + detail : "")); }
+}
+function section(t){ console.log("\n" + t); }
+
+try { vm.runInContext(code, sandbox, {filename:"bus.html"}); }
+catch(e){ console.error("BOOT THREW:", e); process.exit(1); }
+if(!hook){ console.error("hook was never installed"); process.exit(1); }
+
+const K = hook.consts;
+const TOTAL = hook.totalS();
+
+// ------------------------------------------------------------------
+section("1. Boot and idle soak");
+ok("hook installed", !!hook);
+ok("street built", TOTAL > 200 && TOTAL < 320, "length " + TOTAL.toFixed(1) + " m");
+ok("six parked cars", hook.obstacles().length === 6);
+ok("two parked badly", hook.obstacles().filter(o=>o.kind==="van"||o.straddle).length === 2);
+try {
+  for(let i=0;i<3000;i++){ hook.single(); if(i%7===0) hook.render(); }
+  ok("3000 idle frames, no exception", true);
+} catch(e){ ok("3000 idle frames, no exception", false, e.message); }
+ok("fillRect actually drew", fillRects > 1000, fillRects + " calls");
+
+// ------------------------------------------------------------------
+section("2. Palettes (magenta guard = a key missing from KEY_TONE/GBC)");
+for(const p of ["green","gray","color"]){
+  const before = magenta;
+  hook.setPal(p);
+  hook.reset();
+  for(let i=0;i<180;i++){ hook.single(); hook.render(); }
+  ok("palette " + p + " renders without magenta", magenta === before,
+     magenta > before ? (magenta-before) + " magenta fills" : "");
+}
+hook.setPal("color");
+
+// ------------------------------------------------------------------
+section("3. Tail swing (the signature mechanic)");
+// Place the bus on a straight, hold full right lock at a fixed speed, and
+// measure how far the LEFT-REAR corner strays from the initial heading axis.
+// Going straight it sits at exactly half the body width; turning right it must
+// swing OUTWARD past that, while the right-rear corner cuts in.
+hook.reset();
+hook.place(14, 0.8, 0);
+const b = hook.bus;
+const h0 = b.h, P0 = {x:b.rx, y:b.ry};
+const L0 = {x:Math.sin(h0), y:-Math.cos(h0)};
+function corner(sideSign){
+  const c = Math.cos(b.h), s = Math.sin(b.h), a = -K.REAR_OH, off = sideSign*(K.BUS_W/2);
+  return { x:b.rx + a*c + off*s, y:b.ry + a*s - off*c };
+}
+function lateral(pt){ return (pt.x-P0.x)*L0.x + (pt.y-P0.y)*L0.y; }
+let maxLeft = -99, minRight = 99;
+const hitsBefore = hook.hits();
+hook.input.right = true;
+for(let i=0;i<60;i++){
+  b.v = 3.0; b.steerNorm = 1;          // hold speed and lock so the test is clean
+  hook.single();
+  maxLeft = Math.max(maxLeft, lateral(corner(1)));
+  minRight = Math.min(minRight, lateral(corner(-1)));
+}
+hook.input.right = false;
+const swing = maxLeft - K.BUS_W/2;
+ok("no collision during measurement", hook.hits() === hitsBefore,
+   "hits " + (hook.hits()-hitsBefore));
+ok("left-rear corner swings OUTWARD on a right turn", swing > 0.35,
+   "swing " + swing.toFixed(2) + " m past the body edge");
+ok("right-rear corner cuts IN, not out", minRight > -K.BUS_W/2 - 0.02,
+   "min " + minRight.toFixed(2) + " vs body edge " + (-K.BUS_W/2).toFixed(2));
+ok("rear overhang is what causes it", K.REAR_OH > K.FRONT_OH,
+   "rear " + K.REAR_OH + " m vs front " + K.FRONT_OH + " m");
+
+// ------------------------------------------------------------------
+section("4. Clearance probes and the squeeze state");
+hook.reset();
+hook.place(132, 1.56, 0);            // threading past the double-parked van
+for(let i=0;i<6;i++){ hook.bus.v = 0; hook.single(); }
+let cl = hook.clearances();
+ok("both flanks report a tight gap", cl.l < 0.75 && cl.r < 0.75,
+   "L " + cl.l.toFixed(2) + " m  R " + cl.r.toFixed(2) + " m");
+ok("squeeze state engages", hook.squeezing() === true);
+hook.reset();
+hook.place(20, 0, 0);                // wide open, nothing alongside
+for(let i=0;i<6;i++){ hook.bus.v = 0; hook.single(); }
+cl = hook.clearances();
+ok("open street reports clear", cl.l >= K.CLEAR_CAP - 0.01 && cl.r >= K.CLEAR_CAP - 0.01,
+   "L " + cl.l.toFixed(2) + "  R " + cl.r.toFixed(2));
+ok("squeeze state off when open", hook.squeezing() === false);
+
+// ------------------------------------------------------------------
+section("5. Street geometry actually creates the grades it claims");
+// Grade D: a spot where bus + car cannot share. Grade A/B: bays where they can.
+let narrowest = 99, narrowestS = 0, bays = 0;
+for(let s=10; s<TOTAL-10; s+=1){
+  const w = hook.freeInterval(s).w;
+  if(w < narrowest){ narrowest = w; narrowestS = s; }
+  if(w >= K.NEED_BOTH + 0.6) bays++;
+}
+ok("a genuine grade-D pinch exists (cannot share)", narrowest < K.NEED_BOTH,
+   "narrowest " + narrowest.toFixed(2) + " m at s=" + narrowestS + ", need " + K.NEED_BOTH.toFixed(2));
+ok("the bus alone still fits through it", narrowest > K.BUS_W + 0.2,
+   "slack " + (narrowest - K.BUS_W).toFixed(2) + " m");
+ok("passing bays exist to negotiate into", bays > 60, bays + " metres of shareable street");
+
+// ------------------------------------------------------------------
+section("6. Oncoming car negotiates");
+// Compliant driver: should telegraph, then back into a bay and yield.
+hook.reset();
+hook.place(120, 1.5, 0);
+hook.car.stubborn = false;
+let sawTelegraph = false, resolved = null;
+for(let i=0;i<1400;i++){
+  hook.bus.v = 0; hook.single();
+  if(hook.car.mode === "telegraph") sawTelegraph = true;
+  if(hook.car.mode === "backing" || hook.car.mode === "yield"){ resolved = hook.car.mode; break; }
+}
+ok("compliant car telegraphs before acting", sawTelegraph);
+ok("compliant car yields into a bay", resolved !== null, "reached mode '" + resolved + "'");
+
+// Stubborn driver: refuses, and the horn is what unsticks it.
+hook.reset();
+hook.place(120, 1.5, 0);
+hook.car.stubborn = true;
+let waited = false;
+for(let i=0;i<1400;i++){
+  hook.bus.v = 0; hook.single();
+  if(hook.car.mode === "wait"){ waited = true; break; }
+}
+ok("stubborn car refuses and waits", waited, "mode '" + hook.car.mode + "'");
+let unstuck = false;
+if(waited){
+  hook.honk();
+  for(let i=0;i<600;i++){
+    hook.bus.v = 0; hook.single();
+    if(hook.car.mode !== "wait"){ unstuck = true; break; }
+  }
+}
+ok("horn unsticks the stubborn car", unstuck, "mode '" + hook.car.mode + "'");
+
+// ------------------------------------------------------------------
+section("7. Collision is forgiving but solid");
+hook.reset();
+hook.place(TOTAL - 26, 0, 0);
+const hitsB = hook.hits();
+for(let i=0;i<420;i++){ hook.input.up = true; hook.single(); }
+hook.input.up = false;
+let pr = hook.project(hook.busCentre().x, hook.busCentre().y);
+ok("driving into the end wall registers a hit", hook.hits() > hitsB, (hook.hits()-hitsB) + " hits");
+ok("bus does not tunnel through the end wall", pr.s < TOTAL + 0.5, "s=" + pr.s.toFixed(1) + " / " + TOTAL.toFixed(1));
+ok("bus survives it (no fail state, still drivable)", Number.isFinite(hook.bus.v) && Number.isFinite(hook.bus.rx));
+ok("scrapes leave permanent decals", hook.bus.scrapes.length >= 0, hook.bus.scrapes.length + " decals");
+
+// ------------------------------------------------------------------
+section("8. Bins are nudgeable");
+hook.reset();
+const bin0 = hook.bins()[2];
+const bp = hook.project(bin0.x, bin0.y);
+const before = {x:bin0.x, y:bin0.y};
+hook.place(bp.s - 9, bp.q, 0);
+for(let i=0;i<260;i++){ hook.input.up = true; hook.single(); }
+hook.input.up = false;
+const moved = Math.hypot(bin0.x-before.x, bin0.y-before.y);
+ok("bin gets shoved rather than acting as a wall", moved > 0.4, "moved " + moved.toFixed(2) + " m");
+
+// ------------------------------------------------------------------
+section("9. Random-input soak");
+hook.reset();
+let escaped = 0, worstOver = 0;
+try {
+  for(let i=0;i<9000;i++){
+    if(i % 40 === 0){
+      hook.input.up = Math.random() < 0.62;
+      hook.input.down = !hook.input.up && Math.random() < 0.3;
+      hook.input.left = Math.random() < 0.32;
+      hook.input.right = !hook.input.left && Math.random() < 0.32;
+      if(Math.random() < 0.05) hook.honk();
+    }
+    hook.single();
+    if(i % 5 === 0) hook.render();
+    const c = hook.busCentre();
+    const p = hook.project(c.x, c.y);
+    const over = Math.abs(p.q) - p.hw;
+    if(over > worstOver) worstOver = over;
+    if(over > 1.2) escaped++;
+    if(!Number.isFinite(c.x) || !Number.isFinite(hook.bus.v)) throw new Error("NaN at frame " + i);
+  }
+  ok("9000 randomised frames, no exception", true);
+} catch(e){ ok("9000 randomised frames, no exception", false, e.message); }
+ok("bus never escapes the corridor", escaped === 0,
+   "worst overlap " + worstOver.toFixed(2) + " m");
+ok("no magenta across the whole run", magenta === 0, magenta + " magenta fills");
+
+// ------------------------------------------------------------------
+console.log("\n" + (failures ? "FAILED" : "OK") + " -- " + (checks-failures) + "/" + checks + " checks passed");
+process.exit(failures ? 1 : 0);

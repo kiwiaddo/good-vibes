@@ -115,11 +115,37 @@ palette is `color`. Key pieces:
   screens. Touch model: drag-to-pan vs tap-to-assign disambiguated by a
   movement slop + time ceiling; assignment is allowed while paused.
 
+## Where the bus game is up to
+
+There are **five** bus pages live; that is deliberate but temporary.
+
+- `bus.html` (RIGID) is the baseline gate test. `bus-bendy` / `bus-chase` /
+  `bus-shift` each isolate one design axis so they can be compared against it.
+- `bus-4k.html` is not a fifth design. It is RIGID's simulation with a real
+  renderer, built to answer "can this look good", not "should it play
+  differently".
+- **Open decision, owned by the user:** which of the four designs survives.
+  Once they call it, strip the others plus their nav links and their
+  variant-specific harness sections. Do not decide this unilaterally.
+- Recorded recommendation, not a verdict: keep RIGID, treat BENDY as
+  unlockable content, drop CHASE (rotating the camera caps look-ahead at 9 m
+  where world-fixed reaches 20 m), and playtest SHIFT against RIGID.
+
+Section 16 of `docs/bus-game-research.md` holds the remaining open questions.
+
 ## Conventions
 
 - Keep everything **dependency-free and build-free**; a game is one HTML file.
-- Match the existing terse, single-IIFE style; integer pixel coordinates.
+- Match the existing terse, single-IIFE style. The Game Boy titles and the
+  four pixel-art bus pages use integer pixel coordinates; `bus-4k.html` is the
+  one exception and draws real geometry in world metres.
 - Preserve the color-key discipline so all three palettes keep working.
+- **Nothing but the games belongs in the repo root.** Pages publishes the whole
+  root, so a scratch file written there ships to the live site. Two have
+  escaped that way already. Write scratch output to a temp dir, never `.`.
+- `bus-4k.html` and `bus.html` must stay the same simulation. After any edit
+  near the copied block, run `node tools/parity-bus.js` and require exactly
+  zero drift.
 
 ## bus.html / bus-4k.html architecture
 

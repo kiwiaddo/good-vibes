@@ -552,6 +552,357 @@ if(K.VARIANT === "4k"){
   for(let i=0;i<4000;i++){ hook.single(); hook.render(1/60); }
   hook.input.up = false;
   ok("particle buffers stay bounded over a long run", true, "4000 frames driven");
+
+  // ------------------------------------------------------------------
+  section("14. HD: the shift -- levels, stops, doors, clock");
+  // Every route has to be finishable, and the only honest way to know is to
+  // drive one. makeDriver() below is a scripted driver: Stanley lateral
+  // control onto a lane clamped against every free interval in the look-ahead
+  // window (a 12 m bus must fit along the whole window, not just at the aim
+  // point), speed from that window's width, the curvature, the oncoming car
+  // and the distance left to the next stop. It is a worse driver than a
+  // person -- it wins with room to spare, which is the margin being checked.
+  function makeDriver(h){
+    const BW = h.consts.BUS_W, HW = BW/2, PAVE = 0.9, WB = h.consts.WB;
+    const T = ()=>h.totalS();
+    const cl = (v,a,b)=>Math.max(a,Math.min(b,v));
+    const wrap = a=>{ while(a>Math.PI)a-=2*Math.PI; while(a<-Math.PI)a+=2*Math.PI; return a; };
+    // freeInterval() only knows the parked bodies, so fold the oncoming car
+    // in by hand once it has stopped negotiating and is sitting somewhere.
+    function carSpan(s){
+      const c = h.car;
+      if(c.mode !== "yield" && c.mode !== "wait" && c.mode !== "telegraph") return null;
+      if(Math.abs(c.s - s) > 3.4) return null;
+      return { lo:c.q-1.15, hi:c.q+1.15 };
+    }
+    function band(s0,s1){
+      let lo = -1e9, hi = 1e9;
+      for(let s=s0; s<=s1+0.01; s+=1.2){
+        const ss = cl(s,0,T()), fi = h.freeInterval(ss);
+        let flo = fi.lo, fhi = fi.hi;
+        const cs = carSpan(ss);
+        if(cs){
+          if(cs.lo - flo >= fhi - cs.hi) fhi = Math.min(fhi, cs.lo);
+          else                           flo = Math.max(flo, cs.hi);
+        }
+        lo = Math.max(lo, flo + HW + 0.10);
+        hi = Math.min(hi, fhi - HW - 0.10);
+      }
+      return { lo, hi, w:hi-lo, ok:hi>=lo };
+    }
+    function lane(s0,s1,prefer){
+      let b = band(s0,s1);
+      if(!b.ok) b = band(s0, s0+(s1-s0)*0.5);
+      if(!b.ok) b = band(s0, s0+2);
+      if(!b.ok){ const fi = h.freeInterval(cl(s0,0,T())); return { q:(fi.lo+fi.hi)/2, w:0 }; }
+      const mid = (b.lo+b.hi)/2, t = cl((b.w-0.9)/1.8, 0, 1);
+      return { q:cl(prefer,b.lo,b.hi)*t + mid*(1-t), w:b.w };
+    }
+    function curv(s){
+      return Math.abs(wrap(h.pathPoint(cl(s+16,0,T())).ang - h.pathPoint(cl(s,0,T())).ang));
+    }
+    let stuck = 0, unstick = 0, holdLock = 0;
+    return function step(){
+      const I = h.input, G = h.game, bus = h.bus, car = h.car;
+      I.left = I.right = I.up = I.down = false;
+      if(G.state !== "play") return;
+      const v = bus.v, st = h.nextStop();
+      if(!st) return;
+      const bp = h.busS();
+      const fa = h.busLocal(WB,0), fpr = h.project(fa.x,fa.y);
+      const dp = h.busLocal(4.4, st.side*HW), dpr = h.project(dp.x,dp.y);
+      const toStop = st.s - dpr.s;
+
+      if(Math.abs(v) < 0.05 && G.board <= 0 && !(toStop <= 0.6 && toStop >= -2.2)) stuck++;
+      else stuck = 0;
+      if(stuck > 30){ unstick = 90; stuck = 0; }
+      if(unstick > 0){
+        unstick--;
+        if(unstick > 40) I.down = true;
+        else { I.up = true; if(unstick > 20) I.right = true; else I.left = true; }
+        return;
+      }
+
+      const look = cl(7 + Math.abs(v)*1.1, 7, 16);
+      const near = (toStop < 22 && toStop > -16);
+      const keep = (h.pathPoint(cl(fpr.s,0,T())).hw - PAVE) - HW - 0.40;
+      const ln = lane(fpr.s, fpr.s + look, near ? h.stopDoorQ(st) : keep);
+
+      // +q is LEFT of the path and +steer turns RIGHT, so a bus sitting left
+      // of its lane wants positive steer and one pointing right wants negative.
+      const psi = wrap(bus.h - h.pathPoint(cl(fpr.s,0,T())).ang);
+      let delta = -psi + Math.atan2(1.7*(fpr.q - ln.q), Math.abs(v) + 1.8);
+      if(v < -0.05) delta = -delta;
+      const auth = h.consts.STEER_MAX * (1 - 0.62*Math.min(1, Math.abs(v)/14));
+      const wantNorm = cl(delta/Math.max(0.05, auth), -1, 1);
+      if(bus.steerNorm > wantNorm + 0.03) I.left = true;
+      else if(bus.steerNorm < wantNorm - 0.03) I.right = true;
+
+      let want = Math.min(8.5, 2.8 + 2.0/Math.max(0.05, curv(bp.s)), 1.6 + 3.2*Math.max(0,ln.w));
+      if(Math.abs(fpr.q - ln.q) > 0.55) want = Math.min(want, 3.2);
+      const cc = h.clearances();
+      if(Math.min(cc.l, cc.r) < 0.22) want = Math.min(want, 1.8);
+      const gap = car.s - bp.s;
+      if(gap > 0 && gap < 32){
+        if(car.mode === "wait") h.honk();
+        want = Math.min(want, gap < 15 ? 1.4 : 2.6);
+      }
+      if(toStop > 0.6 && toStop < 48)
+        want = Math.min(want, Math.sqrt(Math.max(0, 2*2.4*Math.max(0, toStop-0.35))));
+      if(holdLock > 0) holdLock--;
+      if(G.riders > 0 && ln.w < 0.6 && holdLock === 0 && G.holdCool <= 0){ h.holdOn(); holdLock = 240; }
+
+      if(toStop < -2.2 && toStop > -50){ I.down = true; return; }   // overshot: reverse
+      if(toStop <= 0.6 && toStop >= -2.2){ if(v > 0.08) I.down = true; return; }
+      if(want <= 0.06){ if(v > 0.08) I.down = true; return; }
+      if(v < want - 0.25) I.up = true;
+      else if(v > want + 0.25) I.down = true;
+    };
+  }
+
+  const G = hook.game, LV = hook.levels;
+  ok("two routes are authored", LV.length === 2, LV.map(l=>l.name).join(" / "));
+
+  // Level 1 must be the gate-test street, or the parity claim is hollow.
+  ok("route 1 is the prototype street", LV[0].nodes.length === 10 &&
+     LV[0].nodes[4].hw === 3.3 && LV[0].parked.length === 6);
+
+  // Geometry audit, per route: reachable docks, no buildings in the road, and
+  // at least one pinch tight enough to be the point of the level.
+  for(let i=0;i<LV.length;i++){
+    hook.loadLevel(i); hook.reset(); hook.buildWaiters();
+    const T = hook.totalS(), BW = K.BUS_W;
+    ok("route " + (i+1) + " builds a street", T > 200 && T < 400, T.toFixed(0) + " m");
+
+    let intr = 0;
+    for(const B of hook.blocks()){
+      const c = Math.cos(B.ang), s2 = Math.sin(B.ang);
+      for(const [a,b] of [[1,1],[1,-1],[-1,-1],[-1,1]]){
+        const x = B.x + a*B.hl*c + b*B.hw*s2, y = B.y + a*B.hl*s2 - b*B.hw*c;
+        const pr = hook.project(x,y);
+        if(Math.abs(pr.q) < pr.hw - 0.01 && pr.s > 0.5 && pr.s < T-0.5) intr++;
+      }
+    }
+    ok("route " + (i+1) + ": no building in the corridor", intr === 0, hook.blocks().length + " blocks");
+
+    // The bus has to physically fit the whole way down, and it has to be
+    // tight somewhere or there is no game.
+    let minRoad = 1e9, minRoadS = 0, minWall = 1e9;
+    for(let s=2; s<T-2; s+=0.25){
+      const fi = hook.freeInterval(s), p = hook.pathPoint(s), kerb = p.hw - 0.9;
+      const road = Math.max(0, Math.min(fi.hi,kerb) - Math.max(fi.lo,-kerb));
+      if(road < minRoad){ minRoad = road; minRoadS = s; }
+      if(fi.w < minWall) minWall = fi.w;
+    }
+    ok("route " + (i+1) + ": the bus fits everywhere", minWall > BW + 0.35,
+       "narrowest to the building line " + minWall.toFixed(2) + " m");
+    ok("route " + (i+1) + ": it is genuinely tight somewhere", minRoad < BW + 0.45,
+       "kerb to kerb " + minRoad.toFixed(2) + " m at s=" + minRoadS.toFixed(0));
+
+    // Every stop must be dockable, and every one but the deliberately blocked
+    // one must be dockable well.
+    let bad = [], poor = [];
+    for(const st of G.stops){
+      hook.place(st.s - 4.4, hook.stopDoorQ(st), 0);
+      const d = hook.dockAt(st);
+      if(!d.ok) bad.push(st.name);
+      else if(d.q < 0.70) poor.push(st.name + " " + d.q.toFixed(2));
+    }
+    ok("route " + (i+1) + ": every stop can be docked", bad.length === 0, bad.join(",") || G.stops.length + " stops");
+    ok("route " + (i+1) + ": clean docks are available", poor.length === 0, poor.join(","));
+  }
+
+  // ---- drive both routes end to end ----
+  const drive = makeDriver(hook);
+  const runs = [];
+  for(let i=0;i<LV.length;i++){
+    hook.startLevel(i);
+    let f = 0;
+    const budget = 60*(LV[i].par + 240);
+    while(hook.game.state === "play" && f < budget){ drive(); hook.play(1); f++; }
+    const R = hook.game.result || {};
+    runs.push({ i, f, R, hits:hook.hits() });
+    ok("route " + (i+1) + " " + LV[i].name + " can be driven to the terminus",
+       hook.game.state === "result" && R.win === true && R.served === R.total,
+       (R.served||0) + "/" + (R.total||0) + " stops in " + (f/60).toFixed(0) + "s, " +
+       (R.left||0) + "s spare, " + hook.hits() + " hits");
+    ok("route " + (i+1) + ": the whole manifest moved", (R.moved||0) > 0 && hook.game.riders === 0,
+       (R.moved||0) + " passengers");
+    ok("route " + (i+1) + ": the clock left a margin", (R.left||0) >= 8 && (R.left||0) <= 90,
+       (R.left||0) + "s of a " + LV[i].par + "s par");
+    ok("route " + (i+1) + ": scoring produced a score", (R.score||0) > 1000, "" + (R.score||0));
+  }
+
+  section("15. HD: the rules the shift runs on");
+  hook.startLevel(0);
+  // Mass (S2.3): a full bus must take meaningfully longer to stop.
+  function stopDist(riders){
+    hook.startLevel(0);
+    hook.setNoclip(true);            // measuring the brakes, not the scenery
+    hook.input.left = hook.input.right = hook.input.up = false;   // straight line only
+    hook.game.riders = riders;
+    hook.place(12, 0, 0);
+    hook.bus.v = 12;
+    const x0 = hook.bus.rx, y0 = hook.bus.ry;
+    hook.input.down = true;
+    for(let i=0;i<900 && hook.bus.v > 0.2; i++){ hook.play(1); }
+    hook.input.down = false;
+    hook.setNoclip(false);
+    return Math.hypot(hook.bus.rx-x0, hook.bus.ry-y0);
+  }
+  const dEmpty = stopDist(0), dFull = stopDist(16);
+  ok("a full bus takes longer to stop", dFull > dEmpty*1.18,
+     dEmpty.toFixed(1) + " m empty vs " + dFull.toFixed(1) + " m full");
+  ok("an empty bus brakes at the prototype's rate", Math.abs(dEmpty - 12*12/(2*4.2)) < 0.6,
+     dEmpty.toFixed(1) + " m vs " + (12*12/(2*4.2)).toFixed(1) + " m of pure BRAKE");
+
+  // Comfort (S3): a multiplier, never a fail state.
+  hook.startLevel(0);
+  hook.setNoclip(true);
+  hook.game.riders = 10;
+  hook.game.mult = 4;
+  hook.place(12, 0, 0);
+  hook.bus.v = 12;
+  hook.input.left = true;
+  let minComfort = 1;
+  for(let i=0;i<240;i++){ hook.play(1); minComfort = Math.min(minComfort, hook.game.comfort); }
+  hook.input.left = false;
+  hook.setNoclip(false);
+  ok("throwing people about costs comfort", minComfort < 0.9, "fell to " + minComfort.toFixed(2));
+  ok("comfort never ends the run", hook.game.state === "play");
+
+  // The brace verb (S3): free violence, paid for in clock.
+  hook.startLevel(0);
+  hook.setNoclip(true);
+  hook.game.riders = 10;
+  const beforeClock = hook.game.clock, beforeComfort = hook.game.comfort;
+  hook.holdOn();
+  ok("HOLD ON costs a slice of the clock", hook.game.clock < beforeClock,
+     (beforeClock - hook.game.clock).toFixed(0) + "s");
+  hook.place(12, 0, 0);
+  hook.bus.v = 12; hook.input.left = true;
+  for(let i=0;i<100;i++) hook.play(1);
+  hook.input.left = false;
+  hook.setNoclip(false);
+  ok("braced passengers do not complain", hook.game.comfort >= beforeComfort - 0.001,
+     "comfort " + hook.game.comfort.toFixed(2));
+
+  // Doors are a handbrake, and boarding is not dead time (S4).
+  hook.startLevel(0);
+  const st0 = hook.nextStop();
+  hook.place(st0.s - 4.4, hook.stopDoorQ(st0), 0);
+  hook.bus.v = 0;
+  for(let i=0;i<8;i++) hook.play(1);
+  ok("pulling up opens the doors", hook.game.board > 0, "board " + hook.game.board.toFixed(2) + "s");
+  ok("a perfect dock boards in under 1.5 s", hook.game.boardLen < 1.5,
+     hook.game.boardLen.toFixed(2) + "s at quality " + hook.game.boardQ.toFixed(2));
+  hook.input.up = true;
+  for(let i=0;i<20;i++) hook.play(1);
+  hook.input.up = false;
+  ok("the bus cannot drive off with the doors open", Math.abs(hook.bus.v) < 0.001);
+  for(let i=0;i<200 && hook.game.next === 0; i++) hook.play(1);
+  ok("boarding completes and moves the manifest", hook.game.next === 1 && hook.game.riders === st0.on,
+     hook.game.riders + " aboard");
+
+  // A rough dock is slower than a clean one, which is the whole skill.
+  hook.startLevel(0);
+  const st1 = hook.nextStop();
+  hook.place(st1.s - 4.4 - 1.0, hook.stopDoorQ(st1) - 0.30, 0.10);
+  hook.bus.v = 0;
+  for(let i=0;i<8;i++) hook.play(1);
+  ok("a scruffy dock still opens the doors", hook.game.board > 0);
+  ok("a scruffy dock takes longer to board", hook.game.boardLen > 1.6,
+     hook.game.boardLen.toFixed(2) + "s at quality " + hook.game.boardQ.toFixed(2));
+
+  // Damage costs time and the combo, and never the run (S12/S13).
+  hook.startLevel(0);
+  hook.game.mult = 5;
+  const c0 = hook.game.clock;
+  hook.place(130, 0, 0);
+  hook.bus.v = 10; hook.input.up = true;
+  for(let i=0;i<200;i++) hook.play(1);
+  hook.input.up = false;
+  ok("crashing costs clock", hook.game.clock < c0 - 1, (c0 - hook.game.clock).toFixed(0) + "s gone");
+  ok("crashing breaks the combo", hook.game.mult === 1);
+  ok("crashing never ends the run", hook.game.state === "play", "hits " + hook.hits());
+
+  // A squeeze pays once per squeeze, not once per frame it is on screen.
+  hook.startLevel(0);
+  hook.game.mult = 1;
+  hook.game.next = 2;                        // aim past the pinch, not back at stop 1
+  hook.place(118, 1.5, 0);
+  let payouts = 0, lastScore = hook.game.score, sawSqueeze = false;
+  for(let i=0;i<900 && hook.busS().s < 175; i++){
+    drive(); hook.play(1);
+    if(hook.squeezing()) sawSqueeze = true;
+    if(hook.game.score > lastScore){ payouts++; lastScore = hook.game.score; }
+  }
+  hook.input.left = hook.input.right = hook.input.up = hook.input.down = false;
+  ok("the pinch is tight enough to register as a squeeze", sawSqueeze);
+  ok("threading the pinch pays a squeeze bonus", payouts > 0, payouts + " payouts");
+  ok("and pays it exactly once per squeeze", payouts <= 2, payouts + " payouts, mult " + hook.game.mult);
+
+  // The clock is the only thing that ends a shift.
+  hook.startLevel(0);
+  hook.game.clock = 0.5;
+  for(let i=0;i<60;i++) hook.play(1);
+  ok("running out of time ends the shift", hook.game.state === "result" && !hook.game.result.win);
+
+  section("16. HD: the front end");
+  // title -> brief -> play -> result -> brief -> play -> result -> shift -> title
+  hook.game.state = "title"; hook.game.pick = 0;
+  const seen = [];
+  hook.advance(); seen.push(hook.game.state);              // brief, route 1
+  hook.advance(); seen.push(hook.game.state);              // play
+  hook.game.clock = 0.2; for(let i=0;i<30;i++) hook.play(1);
+  seen.push(hook.game.state);                              // result (lost)
+  hook.advance(); seen.push(hook.game.state);              // straight back to brief
+  ok("a lost route drops you straight back in", seen.join(">") === "brief>play>result>brief", seen.join(" > "));
+
+  // Winning route 1 must hand you route 2, and winning route 2 the shift card.
+  hook.startLevel(0);
+  hook.game.next = hook.game.stops.length - 1;
+  const term = hook.nextStop();
+  hook.place(term.s - 4.4, hook.stopDoorQ(term), 0);
+  hook.bus.v = 0;
+  for(let i=0;i<300 && hook.game.state === "play"; i++) hook.play(1);
+  ok("reaching the terminus wins the route", hook.game.state === "result" && hook.game.result.win);
+  hook.advance();
+  ok("winning route 1 offers route 2", hook.game.state === "brief" && hook.game.lvl === 1);
+  hook.advance();
+  hook.game.next = hook.game.stops.length - 1;
+  const term2 = hook.nextStop();
+  hook.place(term2.s - 4.4, hook.stopDoorQ(term2), 0);
+  hook.bus.v = 0;
+  for(let i=0;i<300 && hook.game.state === "play"; i++) hook.play(1);
+  hook.advance();
+  ok("winning route 2 ends the shift", hook.game.state === "shift");
+  hook.advance();
+  ok("the shift card returns to the depot", hook.game.state === "title");
+
+  section("17. HD: every screen of the shift renders in every palette");
+  const before17 = magenta;
+  for(const p of ["color","green","gray"]){
+    hook.setPal(p);
+    for(let i=0;i<LV.length;i++){
+      hook.startLevel(i);
+      for(const s2 of ["title","brief","result","shift","play"]){
+        hook.game.state = s2;
+        hook.game.result = { win:s2 === "shift", timeBonus:900, left:20, moved:12, score:4200, served:3, total:4 };
+        hook.game.msg = "SHOPPING EVERYWHERE"; hook.game.msgT = 1;
+        hook.game.riders = 8; hook.game.board = s2 === "play" ? 1 : 0; hook.game.boardLen = 2;
+        for(let k=0;k<12;k++) hook.render(1/60);
+      }
+      // and the world itself, driven, with the stop dressing on screen
+      hook.startLevel(i);
+      hook.input.up = true;
+      for(let k=0;k<400;k++){ drive(); hook.play(1); hook.render(1/60); }
+      hook.input.up = false;
+    }
+  }
+  hook.setPal("color");
+  ok("no magenta anywhere in the shift", magenta === before17,
+     magenta > before17 ? (magenta-before17) + " magenta fills" : "3 palettes x 2 routes x 5 screens");
 }
 
 // ------------------------------------------------------------------

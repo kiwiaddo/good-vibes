@@ -103,6 +103,18 @@
     box-shadow:0 8px 22px rgba(0,0,0,.5), inset 0 2px 0 rgba(255,255,255,.35);
   }
   #horn:active{ transform:translateY(3px) scale(.97); }
+  #holdbtn{
+    position:absolute; right:calc(22px + env(safe-area-inset-right));
+    bottom:calc(58px + env(safe-area-inset-bottom) + clamp(92px, 26vmin, 144px));
+    padding:0 clamp(10px,3vmin,18px); height:clamp(42px,11vmin,58px); border-radius:12px;
+    background:rgba(22,27,34,.78); color:var(--ink);
+    border:1px solid rgba(160,175,195,.30);
+    font-size:clamp(11px,2.6vmin,14px); font-weight:800; letter-spacing:.12em;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; touch-action:none;
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+    box-shadow:0 6px 18px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.10);
+  }
+  #holdbtn:active{ background:rgba(120,140,170,.55); transform:translateY(2px); }
 
   #keyhint{
     position:absolute; left:50%; transform:translateX(-50%);
@@ -114,6 +126,7 @@
     backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
   }
   #keyhint.gone{ opacity:0; }
+  @media (max-width:620px){ #keyhint{ white-space:normal; max-width:88vw; line-height:1.5; } }
   body.touch #keyhint, body.forcepad #keyhint{ display:none; }
 </style>
 </head>
@@ -139,9 +152,10 @@
         <button class="btn" id="down">&#9660;</button>
       </div>
       <button class="btn" id="horn">HORN</button>
+      <button id="holdbtn">HOLD ON</button>
     </div>
 
-    <div id="keyhint">&#8593;&#8595; THROTTLE / BRAKE &middot; &#8592;&#8594; STEER &middot; SPACE HORN &middot; R RESET</div>
+    <div id="keyhint">&#8593;&#8595; THROTTLE / BRAKE &middot; &#8592;&#8594; STEER &middot; SPACE HORN &middot; H HOLD ON &middot; R RESTART</div>
 
     <div id="variants">
       <a class="vchip on" href="bus-4k.html">HD</a>
@@ -236,7 +250,9 @@ const KEY_TONE = {
   "c":2,"C":1,"v":2,"V":1,"o":2,"O":1,  // parked car, van, oncoming car
   "h":3,"r":2,"n":1,"N":2,              // hazard, brake light, bin, bin lid
   "s":3,"f":3,"e":2,                    // spark, warm light, ghost
-  "x":3,"X":1,"y":3,"w":3               // hud, hud dim, warn, white
+  "z":1,"S":2,"W":3,                    // waiting passenger coat / skin, stop sign
+  "E":2,"Y":1,                          // the skip, and its shaded flank
+  "x":3,"X":2,"y":3,"w":3               // hud, hud dim, warn, white
 };
 const GBC = {
   "a":"#080a0e",
@@ -248,6 +264,8 @@ const GBC = {
   "c":"#4a86c6","C":"#2f5e91","v":"#e0dbcf","V":"#a9a496","o":"#52a86e","O":"#2f7048",
   "h":"#ffb524","r":"#ff4a3d","n":"#46583f","N":"#67805c",
   "s":"#fff0b8","f":"#ffd8a0","e":"#6fe3bd",
+  "z":"#3d5a80","S":"#d9a273","W":"#dfe4ea",
+  "E":"#e0862a","Y":"#a35c14",
   "x":"#eef1f4","X":"#8c93a0","y":"#ffe45c","w":"#ffffff"
 };
 const PAL_ORDER = ["color","green","gray"];
@@ -261,10 +279,17 @@ function col(key){
 }
 
 // ============================================================
-// SIMULATION -- copied verbatim from bus.html (lines 215-628 and
-// 631-721). Do not edit: tools/parity-bus.js drives both files with the
-// same input script and asserts the bus pose matches to 1e-9. If this
-// block drifts, the HD build stops being the same game.
+// SIMULATION -- the driving model from bus.html, unchanged.
+//
+// What used to be a verbatim copy of the whole block is now a verbatim copy
+// of the CODE with the world DATA lifted out into LEVELS: the street, the
+// parked cars and the bins are refilled by loadLevel() instead of being
+// written inline. Level 1 is the gate-test street node for node, so the
+// empty bus still drives exactly as the prototype does, and
+// tools/parity-bus.js proves it -- 6000 scripted frames, zero drift, on
+// every field. Nothing here may read game state; the passenger, clock and
+// comfort systems live below the GAME banner and only ever act after
+// update() has run.
 // ============================================================
 // ============================================================
 // The street: a centreline polyline with a varying half-width.
@@ -273,21 +298,11 @@ function col(key){
 // which is the small voluntary margin the design wants players to gamble on.
 // ============================================================
 const PAVE = 0.9;
-const NODES = [
-  {x:0,   y:0,   hw:4.6},
-  {x:40,  y:0,   hw:4.6},
-  {x:70,  y:-8,  hw:4.2},
-  {x:105, y:-12, hw:4.0},
-  {x:135, y:-4,  hw:3.3},   // the pinch
-  {x:160, y:6,   hw:3.4},
-  {x:190, y:10,  hw:4.0},
-  {x:220, y:2,   hw:4.4},
-  {x:236, y:-2,  hw:5.0},
-  {x:252, y:-2,  hw:7.2}    // turning head
-];
+const NODES = [];          // refilled by loadLevel()
 const SEGS = [];
 let TOTAL_S = 0;
-(function buildPath(){
+function buildPath(){
+  SEGS.length = 0; TOTAL_S = 0;
   for(let i=0;i<NODES.length-1;i++){
     const a = NODES[i], b = NODES[i+1];
     const dx = b.x-a.x, dy = b.y-a.y;
@@ -299,7 +314,7 @@ let TOTAL_S = 0;
     });
     TOTAL_S += len;
   }
-})();
+}
 
 // Nearest point on the path. Returns along-distance s, lateral offset q
 // (positive = left of travel), and the half-width there.
@@ -339,23 +354,22 @@ function toWorld(s,q){ const p = pathPoint(s); return { x:p.x+p.nx*q, y:p.y+p.ny
 // is also a geometry problem. Bins are nudgeable (the pressure valve).
 // ============================================================
 const CAR_L = 4.2, CAR_W = 1.8, VAN_L = 5.4, VAN_W = 2.1;
-const PARKED_SPEC = [
-  {s:34,  q:2.7,  a:0.02,  t:"car", tint:"c"},
-  {s:74,  q:-2.5, a:-0.03, t:"car", tint:"c"},
-  {s:98,  q:2.6,  a:0.0,   t:"car", tint:"c"},
-  {s:118, q:2.4,  a:0.03,  t:"car", tint:"c"},                 // narrows the squeeze-past
-  {s:132, q:-1.35,a:-0.05, t:"van", tint:"v", hazard:true},    // BADLY: double-parked
-  {s:178, q:1.9,  a:0.56,  t:"car", tint:"c", straddle:true}   // BADLY: 32 deg across two bays
-];
-const BIN_SPEC = [ {s:60,q:3.0},{s:62.2,q:3.05},{s:184,q:-2.8},{s:186.4,q:-2.95},{s:188.6,q:-2.6} ];
+const SKIP_L = 3.4, SKIP_W = 1.9;      // the recurring nemesis (research S5)
+// Every parked-body kind, so a level can name one instead of hard-coding sizes.
+const RIG_DIM = {
+  car:  {l:CAR_L,  w:CAR_W},
+  van:  {l:VAN_L,  w:VAN_W},
+  skip: {l:SKIP_L, w:SKIP_W}
+};
+let PARKED_SPEC = [], BIN_SPEC = [];   // refilled by loadLevel()
 
 let obstacles = [], bins = [];
 function buildWorld(){
   obstacles = PARKED_SPEC.map(p=>{
     const w = toWorld(p.s, p.q);
-    const isVan = p.t === "van";
+    const dim = RIG_DIM[p.t] || RIG_DIM.car;
     const o = { x:w.x, y:w.y, ang:w.ang + p.a,
-             hl:(isVan?VAN_L:CAR_L)/2, hw:(isVan?VAN_W:CAR_W)/2,
+             hl:dim.l/2, hw:dim.w/2,
              kind:p.t, hazard:!!p.hazard, straddle:!!p.straddle };
     const pr = project(o.x,o.y); o.ps = pr.s; o.pq = pr.q;
     return o;
@@ -779,6 +793,494 @@ function update(){
 }
 
 // ============================================================
+// GAME
+// The one-street gate test passed (research S15), so this is the shift
+// built on top of it: a route with stops, a manifest, a clock and a
+// comfort multiplier -- S3 (three pressures that disagree), S4 (the fare
+// loop, bus-ified) and S12 (session structure and scoring).
+//
+// The rule that keeps the physics honest: nothing here runs inside
+// update(). gameTick() is called immediately after it, from the same
+// fixed-step loop, and the only thing it writes back into the driving
+// model is payloadStep() -- the passengers' mass, added as a correction.
+// With an empty bus that correction is exactly zero, which is why
+// tools/parity-bus.js still reports no drift at all against bus.html.
+// ============================================================
+
+const CAP       = 16;      // seated + standing
+const DOOR_A    = 4.4;     // front door, metres ahead of the rear axle
+const DOCK_S    = 3.0;     // slack along the kerb, metres
+const DOCK_GAP  = 0.95;    // flank-to-kerb the doors will still open at
+const DOCK_REF  = 0.55;    // ...but quality is gone by this far out
+const DOCK_SKEW = 0.34;    // radians of skew tolerated
+const BOARD_MIN = 0.9;     // S4: dead time is the enemy -- best case under 1.5 s
+const BOARD_MAX = 3.2;
+const HOLD_T    = 2.2, HOLD_COOL = 6.0, HOLD_COST = 3.0;
+
+// ---------- the two routes ----------
+// Hand-authored, both of them: S13 is explicit that a generator can make a
+// plausible street but cannot decide that this corner is funnier with a skip
+// on it. Level 1 IS the gate-test street, node for node -- that is the street
+// the physics were tuned against, and reusing it is what keeps the HD build
+// and the prototype the same vehicle.
+const LEVELS = [
+  {
+    name:"MILL LANE", route:"THE 41", sub:"MORNING SHIFT",
+    brief:"Three stops, one street, and a van parked like a threat. "+
+          "Dock with the doors at the kerb, then thread the pinch with a full bus.",
+    par:96,
+    nodes:[
+      {x:0,   y:0,   hw:4.6},
+      {x:40,  y:0,   hw:4.6},
+      {x:70,  y:-8,  hw:4.2},
+      {x:105, y:-12, hw:4.0},
+      {x:135, y:-4,  hw:3.3},   // the pinch
+      {x:160, y:6,   hw:3.4},
+      {x:190, y:10,  hw:4.0},
+      {x:220, y:2,   hw:4.4},
+      {x:236, y:-2,  hw:5.0},
+      {x:252, y:-2,  hw:7.2}    // turning head
+    ],
+    parked:[
+      {s:34,  q:2.7,  a:0.02,  t:"car"},
+      {s:74,  q:-2.5, a:-0.03, t:"car"},
+      {s:98,  q:2.6,  a:0.0,   t:"car"},
+      {s:118, q:2.4,  a:0.03,  t:"car"},                 // narrows the squeeze-past
+      {s:132, q:-1.35,a:-0.05, t:"van", hazard:true},    // BADLY: double-parked
+      {s:178, q:1.9,  a:0.56,  t:"car", straddle:true}   // BADLY: 32 deg across two bays
+    ],
+    bins:[ {s:60,q:3.0},{s:62.2,q:3.05},{s:184,q:-2.8},{s:186.4,q:-2.95},{s:188.6,q:-2.6} ],
+    stops:[
+      {s:52,  side:1, on:4, off:0, bonus:16, name:"MILL LANE",    note:"Easy kerb. Learn the dock."},
+      {s:86,  side:1, on:3, off:1, bonus:16, name:"BREWERY YARD", note:"Load up before the pinch."},
+      {s:200, side:1, on:5, off:2, bonus:18, name:"CANAL BRIDGE", note:"Mind the straddled car."},
+      {s:242, side:1, on:0, off:9, bonus:0,  name:"TERMINUS", terminus:true}
+    ]
+  },
+  {
+    name:"MARKET HILL", route:"THE 41", sub:"MARKET DAY",
+    brief:"Longer, meaner, and the market is out. A skip in the first pinch, a "+
+          "compound corner in the second, and somebody has parked in a stop.",
+    par:145,
+    nodes:[
+      {x:0,   y:0,   hw:5.0},   // depot gate
+      {x:34,  y:0,   hw:4.6},
+      {x:62,  y:10,  hw:4.0},   // turn in to the market
+      {x:96,  y:14,  hw:3.7},   // the Shambles -- stalls both sides
+      {x:124, y:8,   hw:3.25},  // PINCH 1: the skip
+      {x:150, y:-2,  hw:3.5},
+      {x:178, y:-6,  hw:4.6},   // vista: the relief after the first pinch
+      {x:206, y:-2,  hw:3.8},   // compound corner, first clipping point
+      {x:226, y:8,   hw:3.3},   // PINCH 2, second clipping point
+      {x:252, y:12,  hw:3.7},   // and the reverse out of it
+      {x:280, y:10,  hw:4.4},
+      {x:304, y:18,  hw:4.8},
+      {x:328, y:22,  hw:7.0}    // terminus head
+    ],
+    parked:[
+      {s:18,  q:-2.6, a:-0.02, t:"car"},                 // far kerb: the first dock stays clean
+      {s:52,  q:3.0,  a:0.02,  t:"car"},
+      {s:58,  q:-2.3, a:-0.04, t:"car"},
+      {s:76,  q:2.45, a:0.01,  t:"van", hazard:true},    // market delivery, hazards on
+      {s:92,  q:-2.1, a:0.03,  t:"car"},
+      {s:110, q:2.25, a:0.60,  t:"car", straddle:true},  // straddling the market bays
+      {s:126, q:-1.41,a:-0.03, t:"skip"},                // NEMESIS, re-staged in the pinch
+      {s:138, q:2.6,  a:0.02,  t:"car"},                 // chicane out of the pinch, and
+                                                         // far enough back to leave the
+                                                         // OLD BRIDGE kerb clear
+      {s:174, q:-2.7, a:-0.02, t:"car"},
+      {s:196, q:-1.45,a:0.05,  t:"van", hazard:true},    // double-parked into the compound
+      {s:224, q:-1.15,a:-0.06, t:"skip"},                // NEMESIS again, on the apex
+      {s:262, q:2.15, a:0.01,  t:"car", inStop:true},    // parked IN the bus stop
+      {s:296, q:-2.6, a:0.03,  t:"car"}
+    ],
+    bins:[
+      {s:84,q:2.9},{s:86.4,q:3.0},{s:88.6,q:2.8},        // the market spills out
+      {s:96,q:-2.6},{s:98.4,q:-2.75},
+      {s:158,q:3.2},{s:160.6,q:3.05},
+      {s:286,q:-3.0},{s:288.4,q:-3.1},{s:290.6,q:-2.8}
+    ],
+    stops:[
+      {s:28,  side:1, on:5, off:0, bonus:18, name:"DEPOT GATE",   note:"Wide, straight, forgiving. The last one that is."},
+      {s:96,  side:1, on:6, off:2, bonus:20, name:"THE SHAMBLES", note:"Bins, stalls, no room."},
+      {s:160, side:1, on:4, off:3, bonus:20, name:"OLD BRIDGE",   note:"Breathe. Then the compound corner."},
+      {s:266, side:1, on:5, off:3, bonus:22, name:"GUILDHALL",    note:"Somebody parked in it.", blocked:true},
+      {s:320, side:1, on:0, off:9, bonus:0,  name:"TERMINUS", terminus:true}
+    ]
+  }
+];
+
+// ---------- state ----------
+const G = {
+  state:"title",          // title | brief | play | result | shift
+  lvl:0, pick:0,
+  clock:0, par:0, score:0, mult:1, chain:0,
+  riders:0, moved:0, next:0,
+  comfort:1,
+  holdT:0, holdCool:0, brace:0,
+  doorT:0, board:0, boardLen:0, boardQ:0, boardOn:0, boardOff:0,
+  msg:"", msgT:0, msgKey:'x',
+  pop:[],                 // floating score pops: {s, x, y, t}
+  hits:[],                // tappable rectangles on the front-end cards
+  sqArmed:true,           // one squeeze bonus per squeeze, not per frame
+  lastHits:0, prevV:0, prevH:0, hitCool:0,
+  runScore:0,             // carried across both levels of a shift
+  best:[0,0],
+  tick:0, waiters:[], alight:[]
+};
+try{
+  G.best[0] = parseInt(localStorage.getItem("bus4k_best0"),10) || 0;
+  G.best[1] = parseInt(localStorage.getItem("bus4k_best1"),10) || 0;
+}catch(e){}
+
+function levelData(){ return LEVELS[G.lvl]; }
+function nextStop(){ return G.stops && G.next < G.stops.length ? G.stops[G.next] : null; }
+function say(m, key, t){ G.msg = m; G.msgKey = key || 'x'; G.msgT = t || 2.2; }
+function pop(text, x, y, key){ G.pop.push({s:text, x, y, t:1.5, key:key||'y'}); }
+
+// ---------- level loading ----------
+// Rebuilds the whole world from a level spec. The three builders below use
+// their own seeded generators, never Math.random, so loading a level cannot
+// shift the shared random stream that the oncoming car draws its personality
+// from -- which is what lets the parity harness reset mid-run and still agree.
+function loadLevel(i){
+  G.lvl = Math.max(0, Math.min(LEVELS.length-1, i|0));
+  const L = LEVELS[G.lvl];
+  NODES.length = 0;
+  for(const n of L.nodes) NODES.push(n);
+  buildPath();
+  PARKED_SPEC = L.parked;
+  BIN_SPEC    = L.bins;
+  buildNormals(); buildProps(); buildBlocks();
+  G.stops = L.stops.map((st,k)=>Object.assign({idx:k, served:false, missed:false}, st));
+  G.par = L.par;
+}
+
+// A stop's kerb-side geometry: where the post stands, and where the bus's
+// front door has to end up.
+function stopPost(st){
+  const p = pathPoint(st.s);
+  const w = toWorld(st.s, st.side*(p.hw - PAVE*0.45));
+  return { x:w.x, y:w.y, ang:p.ang, hw:p.hw };
+}
+function stopDoorQ(st){
+  const p = pathPoint(st.s);
+  return st.side * ((p.hw - PAVE) - BUS_HW - 0.10);
+}
+function stopGapTol(st){ return st.blocked ? 2.9 : DOCK_GAP; }
+
+// How well the bus is currently parked at a stop. Returns null when the
+// door is nowhere near it.
+function dockAt(st){
+  const d = busLocal(DOOR_A, st.side*BUS_HW);
+  const pr = project(d.x, d.y);
+  const ds = pr.s - st.s;
+  const gap = (pr.hw - PAVE) - st.side*pr.q;      // flank to kerb line, metres
+  let da = bus.h - pathPoint(st.s).ang;
+  while(da >  Math.PI) da -= 2*Math.PI;
+  while(da < -Math.PI) da += 2*Math.PI;
+  const skew = Math.abs(da);
+  const tol = stopGapTol(st);
+  if(Math.abs(ds) > DOCK_S || gap < -0.40 || gap > tol || skew > DOCK_SKEW*2)
+    return { ok:false, ds, gap, skew };
+  const qs = 1 - Math.min(1, Math.abs(ds)/DOCK_S);
+  const ref = st.blocked ? 2.4 : DOCK_REF;
+  const qg = 1 - Math.min(1, Math.max(0, gap - 0.10)/ref);
+  const qa = 1 - Math.min(1, skew/(DOCK_SKEW*2));
+  let q = 0.20*qs + 0.45*qg + 0.35*qa;
+  if(st.blocked) q = Math.min(q, 0.78);           // you cannot ace a dock you can't reach
+  return { ok:true, ds, gap, skew, q };
+}
+function grade(q){ return q >= 0.88 ? "PERFECT" : q >= 0.70 ? "GOOD" : q >= 0.45 ? "OK" : "ROUGH"; }
+
+// ---------- shift control ----------
+function startLevel(i){
+  loadLevel(i);
+  resetAll();
+  G.clock = G.par; G.next = 0; G.riders = 0; G.moved = 0;
+  G.mult = 1; G.chain = 0; G.comfort = 1; G.sqArmed = true;
+  G.holdT = 0; G.holdCool = 0; G.brace = 0;
+  G.doorT = 0; G.board = 0; G.boardLen = 0; G.alight.length = 0;
+  G.lastHits = hitCount; G.prevV = bus.v; G.prevH = bus.h; G.hitCool = 0;
+  G.score = 0; G.pop.length = 0; G.msgT = 0; G.tick = 0;
+  buildWaiters();
+  G.state = "play";
+}
+function beginShift(i){ G.runScore = 0; G.pick = i; G.lvl = i; G.state = "brief"; }
+
+// Advance from any non-play screen. One button drives the whole front end.
+function advance(){
+  audioInit();
+  if(G.state === "title"){ beginShift(G.pick); return; }
+  if(G.state === "brief"){ startLevel(G.lvl); return; }
+  if(G.state === "result"){
+    if(G.result && G.result.win && G.lvl < LEVELS.length-1){ G.lvl++; G.state = "brief"; }
+    else if(G.result && G.result.win){ G.state = "shift"; }
+    else { G.state = "brief"; }                 // out of time: straight back in
+    return;
+  }
+  if(G.state === "shift"){ G.state = "title"; loadLevel(G.pick); resetAll(); return; }
+}
+function endLevel(win){
+  const left = Math.max(0, G.clock|0);
+  const timeBonus = win ? left*60 : 0;   // finishing early has to be worth real points
+  G.score += timeBonus;
+  if(win){
+    G.runScore += G.score;                        // only completed routes count
+    if(G.score > G.best[G.lvl]){
+      G.best[G.lvl] = G.score;
+      try{ localStorage.setItem("bus4k_best"+G.lvl, ""+G.score); }catch(e){}
+    }
+  }
+  G.result = { win, timeBonus, left, moved:G.moved, score:G.score,
+               served:G.stops.filter(s=>s.served).length, total:G.stops.length };
+  G.state = "result";
+  sSqueezeOff();
+}
+
+// ---------- mass (S2.3) ----------
+// update() is the empty-bus model, untouched. This adds the payload back
+// afterwards: slower to wind up, much longer to shed. A full bus takes about
+// 33 m to stop from 50 km/h where an empty one takes 23 m, which is the whole
+// point -- a successful pickup run makes the next corner harder.
+function payloadStep(sdt){
+  const k = G.riders / CAP;
+  if(k <= 0) return;
+  if(input.up){
+    bus.v -= ACCEL*sdt*k*0.34;
+  } else if(input.down && bus.v > 0.15){
+    bus.v += BRAKE*sdt*k*0.30;
+  } else if(!input.down && Math.abs(bus.v) > 1e-6){
+    const give = DRAG*sdt*k*0.35;                 // momentum carries a loaded bus further
+    if(bus.v > 0) bus.v += give; else bus.v -= give;
+  }
+  if(bus.v >  V_MAX) bus.v =  V_MAX;
+  if(bus.v < -V_REV) bus.v = -V_REV;
+}
+
+// ---------- comfort (S3) ----------
+// A multiplier, never a health bar. An empty bus cannot spill anyone's
+// shopping, so this only bites once you are actually carrying people.
+function comfortStep(sdt){
+  const lon = Math.abs(bus.v - G.prevV)/Math.max(1e-4, sdt);
+  let dh = bus.h - G.prevH;
+  while(dh >  Math.PI) dh -= 2*Math.PI;
+  while(dh < -Math.PI) dh += 2*Math.PI;
+  const lat = Math.abs(bus.v * dh/Math.max(1e-4, sdt));
+  G.prevV = bus.v; G.prevH = bus.h;
+  if(G.riders <= 0){ G.comfort = Math.min(1, G.comfort + sdt*0.55); return; }
+
+  let pen = 0;
+  if(lon > 2.6) pen += (lon - 2.6)*0.11;
+  if(lat > 2.4) pen += (lat - 2.4)*0.13;
+  const bp = busS();
+  if(Math.abs(bp.q) > bp.hw - PAVE) pen += 0.30;   // riding the kerb rattles everyone
+  pen = Math.min(pen, 2.5);
+
+  if(G.holdT > 0){
+    if(pen > 0.02) G.brace = Math.min(1, G.brace + pen*0.9);
+    return;                                        // braced: free violence
+  }
+  if(pen > 0) G.comfort = Math.max(0, G.comfort - pen*sdt);
+  else        G.comfort = Math.min(1, G.comfort + sdt*0.16);
+
+  if(G.comfort < 0.34){
+    G.comfort = 0.60;
+    if(G.mult > 1){ G.mult--; say("SHOPPING EVERYWHERE  ·  x"+G.mult, 'r', 2.0); }
+    else say("HOLD ON BACK THERE!", 'r', 1.6);
+    sJolt();
+  }
+}
+
+function holdOn(){
+  if(G.state !== "play" || G.holdCool > 0 || G.holdT > 0) return;
+  G.holdT = HOLD_T; G.holdCool = HOLD_COOL;
+  G.clock = Math.max(0, G.clock - HOLD_COST);
+  say("HOLD ON!  −"+HOLD_COST.toFixed(0)+"s", 'h', 1.4);
+  sHold();
+}
+
+// ---------- waiting-passenger dressing ----------
+// Purely aesthetic (S4.1: the waving character draws the eye and has no
+// mechanics). Seeded so a level always looks the same.
+function buildWaiters(){
+  G.waiters.length = 0;
+  let seed = 1337 + G.lvl*7919;
+  const rnd = ()=> (seed = (seed*1664525 + 1013904223) >>> 0) / 4294967296;
+  for(const st of G.stops){
+    const p = pathPoint(st.s);
+    const list = [];
+    for(let i=0;i<st.on;i++){
+      const along = st.s - 2.6 + rnd()*5.2;
+      const off   = (p.hw - PAVE*0.62) - rnd()*0.45;
+      const w = toWorld(along, st.side*off);
+      list.push({ x:w.x, y:w.y, ang:p.ang, ph:rnd()*6.283, coat:rnd(), gone:false });
+    }
+    G.waiters.push(list);
+  }
+}
+
+// Move whoever is mid-transfer. Dressing only -- no rider count depends on
+// where these figures happen to be.
+function walkStep(dt){
+  const st = nextStop();
+  if(st){
+    const dw = busLocal(DOOR_A, st.side*BUS_HW);
+    for(const w of (G.waiters[st.idx] || [])){
+      if(w.gone || w.go === undefined) continue;
+      if(w.go > 0){ w.go -= dt; continue; }
+      const dx = dw.x-w.x, dy = dw.y-w.y, L = Math.hypot(dx,dy);
+      if(L < 0.45){ w.gone = true; continue; }
+      const v2 = Math.min(1.6, 0.9 + L*0.5)*dt;
+      w.x += dx/L*v2; w.y += dy/L*v2;
+      w.ang = Math.atan2(dy,dx);
+    }
+  }
+  for(let i=G.alight.length-1;i>=0;i--){
+    const a = G.alight[i];
+    a.life -= dt;
+    if(a.life <= 0){ G.alight.splice(i,1); continue; }
+    if(a.wait > 0){ a.wait -= dt; continue; }
+    const dx = a.tx-a.x, dy = a.ty-a.y, L = Math.hypot(dx,dy);
+    if(L > 0.25){
+      const v2 = Math.min(1.5, 0.8 + L*0.6)*dt;
+      a.x += dx/L*v2; a.y += dy/L*v2;
+      a.ang = Math.atan2(dy,dx);
+    }
+  }
+}
+
+// ---------- the per-frame game step ----------
+function gameTick(){
+  const sdt = (1/60)*timeScale;      // exactly the dt update() just integrated with
+  G.tick++;
+
+  if(G.state !== "play"){
+    G.prevV = bus.v; G.prevH = bus.h;
+    for(let i=G.pop.length-1;i>=0;i--){ G.pop[i].t -= 1/60; if(G.pop[i].t<=0) G.pop.splice(i,1); }
+    if(G.msgT > 0) G.msgT -= 1/60;
+    return;
+  }
+
+  payloadStep(sdt);
+  comfortStep(sdt);
+
+  // Damage: never a fail state, always a cost (S12). The score bleeds per
+  // contact, but the clock is charged at most once every 0.8 s, so a long
+  // scrape down a wall is expensive rather than instantly fatal.
+  if(G.hitCool > 0) G.hitCool -= 1/60;
+  if(hitCount > G.lastHits){
+    const n = hitCount - G.lastHits;
+    G.lastHits = hitCount;
+    G.score = Math.max(0, G.score - 30*n);
+    G.comfort = Math.max(0, G.comfort - Math.min(0.22, 0.08*n));
+    if(G.hitCool <= 0){
+      G.hitCool = 0.8;
+      G.clock = Math.max(0, G.clock - 2);
+      if(G.mult > 1){ G.mult = 1; G.chain = 0; say("CRUNCH  ·  −2s  ·  COMBO LOST", 'r', 1.8); }
+      else say("CRUNCH  ·  −2s", 'r', 1.4);
+    } else if(G.mult > 1){ G.mult = 1; G.chain = 0; }
+  }
+
+  // A clean squeeze is worth money, and it builds the chain (S12). The flash
+  // stays up for most of a second, so the payout is armed once and consumed.
+  if(squeezeFlash <= 0) G.sqArmed = true;
+  if(squeezeFlash > 0 && G.sqArmed){
+    G.sqArmed = false;
+    const cm = Math.max(0, 0.75 - squeezeFlashVal);
+    const pts = Math.round(cm*900)*G.mult;
+    if(pts > 0){
+      G.score += pts;
+      G.chain++;
+      const bc = busCentre();
+      pop("+"+pts, bc.x, bc.y, 'e');
+      if(G.chain % 2 === 0 && G.mult < 5){ G.mult++; say("SMOOTH  ·  x"+G.mult, 'e', 1.6); }
+    }
+  }
+
+  walkStep(1/60);
+  if(G.holdT > 0) G.holdT -= 1/60;
+  if(G.holdCool > 0) G.holdCool -= 1/60;
+  if(G.brace > 0) G.brace = Math.max(0, G.brace - 1.6/60);
+
+  // ---- stops, doors, boarding ----
+  const st = nextStop();
+  if(st){
+    const d = dockAt(st);
+    if(G.board > 0){
+      // Doors open: the bus is going nowhere, which is also the real rule.
+      bus.v = 0;
+      G.doorT = Math.min(1, G.doorT + (1/60)/0.35);
+      G.board -= 1/60;
+      if(G.board <= 0){
+        G.doorT = 0;
+        st.served = true;
+        const off = Math.min(G.riders, st.terminus ? G.riders : st.off);
+        G.riders -= off;
+        const on = Math.min(st.on, CAP - G.riders);
+        G.riders += on;
+        G.moved += off + on;
+        const base = Math.round((70*(off+on) + 90) * (0.55 + G.boardQ));
+        const pts = base*G.mult;
+        G.score += pts;
+        G.clock += st.bonus;
+        const sp = stopPost(st);
+        pop("+"+pts, sp.x, sp.y, 'e');
+        G.chain++;
+        if(G.boardQ >= 0.70 && G.comfort > 0.72 && G.mult < 5){
+          G.mult++;
+          say(grade(G.boardQ)+" DOCK  ·  x"+G.mult+(st.bonus?"  ·  +"+st.bonus+"s":""), 'e', 2.2);
+        } else {
+          say(grade(G.boardQ)+" DOCK"+(st.bonus?"  ·  +"+st.bonus+"s":""), 'y', 2.0);
+        }
+        sChime();
+        G.next++;
+        if(st.terminus){ endLevel(true); return; }
+      }
+    } else if(d.ok && Math.abs(bus.v) < 0.08){
+      G.boardQ = d.q;
+      G.boardLen = BOARD_MIN + (1-d.q)*(BOARD_MAX-BOARD_MIN);
+      G.board = G.boardLen;
+      G.doorT = 0;
+      sDoors();
+      // Send the queue at the door rather than deleting it: the two seconds
+      // the doors are open are the only two seconds anyone can see the point
+      // of the whole loop.
+      const list = G.waiters[st.idx] || [];
+      for(let i=0;i<list.length;i++) list[i].go = 0.10 + i*(G.boardLen*0.55/Math.max(1,list.length));
+      const off = Math.min(G.riders, st.terminus ? G.riders : st.off);
+      const p = pathPoint(st.s);
+      for(let i=0;i<off;i++){
+        const dw = busLocal(DOOR_A, st.side*BUS_HW);
+        const t = toWorld(st.s - 1.6 + (i%3)*1.6, st.side*(p.hw - PAVE*0.5));
+        G.alight.push({ x:dw.x, y:dw.y, tx:t.x, ty:t.y, ang:p.ang,
+                        wait:0.25 + i*(G.boardLen*0.5/Math.max(1,off)),
+                        coat:(i*0.37)%1, life:3.2 });
+      }
+    } else {
+      G.doorT = Math.max(0, G.doorT - (1/60)/0.30);
+      // The overshoot (S4): sail past and it is entirely your own fault.
+      const bp = busS();
+      if(!st.missed && bp.s > st.s + DOCK_S + BUS_L*0.6){
+        st.missed = true;
+        say("MISSED "+st.name+"  ·  BACK UP", 'h', 2.6);
+      } else if(st.missed && bp.s < st.s + DOCK_S){
+        st.missed = false;
+      }
+    }
+  }
+
+  // ---- the clock ----
+  const wasWhole = Math.ceil(G.clock);
+  G.clock -= 1/60;
+  if(G.clock < 10 && Math.ceil(G.clock) !== wasWhole) sTick();
+  if(G.clock <= 0){ G.clock = 0; endLevel(false); return; }
+
+  for(let i=G.pop.length-1;i>=0;i--){ G.pop[i].t -= 1/60; if(G.pop[i].t<=0) G.pop.splice(i,1); }
+  if(G.msgT > 0) G.msgT -= 1/60;
+}
+
+// ============================================================
 // RENDER
 // Everything from here down is new. The prototype drew 320x192 pixels with a
 // scanline rasteriser; this draws real geometry at the device's own
@@ -819,6 +1321,15 @@ function fillRR(x0,y0,x1,y1,style,r){
 }
 function fillKey(x0,y0,x1,y1,key,r){ if(key !== ".") fillRR(x0,y0,x1,y1,col(key),r); }
 // World polygon helper: pts are {x,y} in world metres.
+// Polygon in the CURRENT transform (metres inside inLocal), as opposed to
+// poly(), which takes world points and maps them through sx/sy.
+function poly2(pts){
+  ctx.beginPath();
+  for(let i=0;i<pts.length;i++){
+    if(i === 0) ctx.moveTo(pts[i][0], pts[i][1]); else ctx.lineTo(pts[i][0], pts[i][1]);
+  }
+  ctx.closePath();
+}
 function poly(pts){
   ctx.beginPath();
   for(let i=0;i<pts.length;i++){
@@ -860,7 +1371,8 @@ function buildTexture(){
 
 // ---------- corridor outline, mitred at the kinks ----------
 const NRM = [];
-(function buildNormals(){
+function buildNormals(){
+  NRM.length = 0;
   for(let i=0;i<NODES.length;i++){
     let nx, ny;
     if(i === 0){ nx = SEGS[0].nx; ny = SEGS[0].ny; }
@@ -873,7 +1385,7 @@ const NRM = [];
     }
     NRM.push({x:nx, y:ny});
   }
-})();
+}
 function corridorPath(shrink, ext){
   ext = ext || 0;
   const g0 = SEGS[0], gN = SEGS[SEGS.length-1], last = NODES.length-1;
@@ -896,7 +1408,8 @@ function corridorPath(shrink, ext){
 
 // ---------- one-time street dressing ----------
 const PROPS = [];
-(function buildProps(){
+function buildProps(){
+  PROPS.length = 0;
   let seed = 90210;
   const rnd = ()=> (seed = (seed*1664525 + 1013904223) >>> 0) / 4294967296;
   for(let s = 5; s < TOTAL_S - 4; s += 2.6 + rnd()*6.5){
@@ -913,10 +1426,11 @@ const PROPS = [];
     const w = toWorld(s, pr.q); pr.x = w.x; pr.y = w.y;
     PROPS.push(pr);
   }
-})();
+}
 
 const BLOCKS = [];
-(function buildBlocks(){
+function buildBlocks(){
+  BLOCKS.length = 0;
   let seed = 4242;
   const rnd = ()=> (seed = (seed*1664525 + 1013904223) >>> 0) / 4294967296;
   for(const side of [1,-1]){
@@ -954,7 +1468,7 @@ const BLOCKS = [];
       s += len + 0.3 + rnd()*1.4;
     }
   }
-})();
+}
 
 function viewBounds(m){
   const hx = (W/2)/PPM + m, hy = (H/2)/PPM + m;
@@ -1258,9 +1772,28 @@ function drawBus(){
     rr(4.5, -0.98, 1.05, 0.30, 0.12); ctx.fill();
     rr(-4.2, 0.90, 2.6, 0.12, 0.05); ctx.fill();
 
-    // Pillars, doors and panel seams.
+    // Pillars, doors and panel seams. The two kerb-side doors slide back as
+    // G.doorT eases up, which is the only animation the boarding loop needs.
     fillKey(0.58,-1.275, 0.78, 1.275, 'U', 0.04);
     fillKey(2.98,-1.275, 3.18, 1.275, 'U', 0.04);
+    if(G.doorT > 0.01){
+      const o = G.doorT;
+      for(const d of [[1.86, 3.10],[-1.80,-0.56]]){
+        const w0 = d[0], w1 = d[1], len = w1 - w0;
+        // Light spilling out of the bus is what actually reads from above.
+        ctx.fillStyle = "rgba(255,214,140," + (0.15*o).toFixed(3) + ")";
+        poly2([[w0+0.10,1.28],[w1-0.10,1.28],[w1+0.55,2.55],[w0-0.55,2.55]]);
+        ctx.fill();
+        fillKey(w0, 0.86, w1, 1.32, 'a', 0.05);                       // the aperture
+        fillKey(w0+0.06, 0.92, w1-0.06, 1.18, 'q', 0.04);             // lit step well
+        // Both leaves slide back out of the way.
+        const leaf = len*0.5*(1-o);
+        fillKey(w0, 1.02, w0+leaf, 1.30, 'G', 0.05);
+        fillKey(w1-leaf, 1.02, w1, 1.30, 'G', 0.05);
+        ctx.fillStyle = lite(0.16);
+        rr(w0, 1.30, len, 0.05, 0.02); ctx.fill();
+      }
+    }
     ctx.strokeStyle = shade(0.13); ctx.lineWidth = 0.05;
     for(const a of [-4.2,-1.6,1.9,4.2]){
       ctx.beginPath(); ctx.moveTo(a,-1.20); ctx.lineTo(a,1.20); ctx.stroke();
@@ -1491,6 +2024,232 @@ function drawGhostHD(){
 }
 
 // ---------- HUD ----------
+// ---------- the skip: the recurring nemesis (S5) ----------
+// Not a vehicle -- an open steel box someone left in the road. Drawn without
+// wheels so it reads instantly as "this is not going to move for you".
+function drawSkip(o){
+  const sl = sunLocal(o.ang, 1.0);
+  inLocal(o.x, o.y, o.ang, ()=>{
+    ctx.fillStyle = shade(0.34);
+    rr(-o.hl + sl.a*0.7, -o.hw + sl.b*0.7, o.hl*2, o.hw*2, 0.10); ctx.fill();
+    // Tapered body: the top rim is longer than the base.
+    poly([{x:-o.hl*0.78,y:-o.hw*0.86},{x:o.hl*0.78,y:-o.hw*0.86},
+          {x:o.hl*0.78,y:o.hw*0.86},{x:-o.hl*0.78,y:o.hw*0.86}].map(p=>({
+            x:o.x + p.x*Math.cos(o.ang) + p.y*Math.sin(o.ang),
+            y:o.y + p.x*Math.sin(o.ang) - p.y*Math.cos(o.ang) })));
+    ctx.fillStyle = col('Y'); ctx.fill();
+    fillKey(-o.hl, -o.hw, o.hl, o.hw, 'E', 0.10);
+    ctx.fillStyle = shade(0.42);
+    rr(-o.hl*0.80, -o.hw*0.80, o.hl*1.60, o.hw*1.60, 0.06); ctx.fill();   // the hole
+    // Rubble, seeded off the position so it never crawls.
+    for(let i=0;i<7;i++){
+      const a = hash2((o.x*7)|0, i*13), b = hash2((o.y*7)|0, i*29);
+      const rx = (a-0.5)*o.hl*1.4, ry = (b-0.5)*o.hw*1.4;
+      fillKey(rx-0.16, ry-0.12, rx+0.16, ry+0.12, i%3 ? 'i' : 'q', 0.04);
+    }
+    ctx.strokeStyle = col('E'); ctx.lineWidth = 0.10;
+    rr(-o.hl, -o.hw, o.hl*2, o.hw*2, 0.10); ctx.stroke();
+    const g = sunWash(o.ang, o.hl*1.4, 0.13, 0.16);
+    if(g){ rr(-o.hl,-o.hw,o.hl*2,o.hw*2,0.10); ctx.fillStyle = g; ctx.fill(); }
+    // Hazard stripes on the road-facing end.
+    for(let i=-1;i<=1;i++) fillKey(o.hl-0.24, i*0.34-0.10, o.hl-0.06, i*0.34+0.10, 'h', 0.02);
+  });
+}
+
+// ---------- bus stops ----------
+// The stop is three things drawn together: a box painted on the road (where
+// the bus goes), a pole on the pavement (what you aim at) and the people
+// (what you are actually here for).
+function drawStops(){
+  if(!G.stops || !G.stops.length) return;
+  const vb = viewBounds(26);
+  for(const st of G.stops){
+    const sp = stopPost(st);
+    if(sp.x < vb.x0 || sp.x > vb.x1 || sp.y < vb.y0 || sp.y > vb.y1) continue;
+    const live = !st.served;
+    const isNext = live && nextStop() === st;
+
+    // Road box: the bay you are meant to end up in.
+    const qIn  = st.side*((sp.hw - PAVE) - 0.06);
+    const qOut = st.side*((sp.hw - PAVE) - BUS_W - 0.55);
+    ctx.beginPath();
+    for(let k=0;k<=12;k++){
+      const w = toWorld(st.s - DOCK_S - 3.0 + (k/12)*(DOCK_S*2 + 6.0), qIn);
+      if(k===0) ctx.moveTo(sx(w.x),sy(w.y)); else ctx.lineTo(sx(w.x),sy(w.y));
+    }
+    for(let k=12;k>=0;k--){
+      const w = toWorld(st.s - DOCK_S - 3.0 + (k/12)*(DOCK_S*2 + 6.0), qOut);
+      ctx.lineTo(sx(w.x),sy(w.y));
+    }
+    ctx.closePath();
+    ctx.fillStyle = live ? "rgba(255,181,36,0.10)" : "rgba(255,255,255,0.05)";
+    ctx.fill();
+    ctx.strokeStyle = col(live ? 'h' : 'X');
+    ctx.globalAlpha = live ? 0.75 : 0.30;
+    ctx.lineWidth = Math.max(1, 0.11*PPM);
+    ctx.setLineDash([0.7*PPM, 0.5*PPM]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+
+    // "BUS STOP" cage marking down the middle of the bay.
+    const cq = st.side*((sp.hw - PAVE) - BUS_W*0.5 - 0.3);
+    ctx.strokeStyle = col('l'); ctx.globalAlpha = live ? 0.5 : 0.25;
+    ctx.lineWidth = Math.max(1, 0.08*PPM);
+    for(let k=0;k<7;k++){
+      const a = toWorld(st.s - 3.2 + k*1.1, cq + st.side*0.55);
+      const b = toWorld(st.s - 3.2 + k*1.1 - 0.55, cq - st.side*0.55);
+      ctx.beginPath(); ctx.moveTo(sx(a.x),sy(a.y)); ctx.lineTo(sx(b.x),sy(b.y)); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // Where the front door has to be, while this is the stop you want.
+    if(isNext){
+      const dw = toWorld(st.s, stopDoorQ(st));
+      const t = 0.5 + 0.5*Math.sin(G.tick*0.09);
+      ctx.beginPath(); ctx.arc(sx(dw.x), sy(dw.y), (0.55 + 0.22*t)*PPM, 0, 6.2832);
+      // Amber when somebody is parked on it: the ring still shows where the
+      // door belongs, and why you are not getting it.
+      ctx.strokeStyle = col(st.blocked ? 'h' : 'e'); ctx.globalAlpha = 0.55 + 0.35*t;
+      ctx.lineWidth = Math.max(1, 0.10*PPM); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // The pole, its shadow and the flag.
+    const pl = 0.34;
+    ctx.fillStyle = shade(0.30);
+    ctx.beginPath(); ctx.arc(sx(sp.x + SUN_DX*0.5), sy(sp.y + SUN_DY*0.5), pl*0.8*PPM, 0, 6.2832); ctx.fill();
+    inLocal(sp.x, sp.y, sp.ang, ()=>{
+      ctx.beginPath(); ctx.arc(0,0,0.17,0,6.2832); ctx.fillStyle = col('W'); ctx.fill();
+      fillKey(-0.62, -st.side*0.16, 0.62, -st.side*0.86, live ? 'h' : 'X', 0.10);
+      fillKey(-0.50, -st.side*0.26, 0.50, -st.side*0.76, 'a', 0.06);
+      for(let i=-1;i<=1;i++)
+        fillKey(i*0.30-0.10, -st.side*0.40, i*0.30+0.10, -st.side*0.62, live ? 'h' : 'X', 0.03);
+    });
+
+    // Floating count, colour-coded by payout (S4.2: price the fare first).
+    if(live && st.on > 0){
+      const k = st.on >= 5 ? 'e' : st.on >= 3 ? 'h' : 'r';
+      const px = sx(sp.x), py = sy(sp.y) - (1.9 + 0.18*Math.sin(G.tick*0.07))*PPM;
+      const rad = 0.62*PPM;
+      ctx.beginPath(); ctx.arc(px, py, rad, 0, 6.2832);
+      ctx.fillStyle = "rgba(10,12,16,0.72)"; ctx.fill();
+      ctx.strokeStyle = col(k); ctx.lineWidth = Math.max(1.5, 0.10*PPM); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px - rad*0.34, py + rad*0.86);
+      ctx.lineTo(px + rad*0.34, py + rad*0.86); ctx.lineTo(px, py + rad*1.5);
+      ctx.closePath(); ctx.fillStyle = "rgba(10,12,16,0.72)"; ctx.fill();
+      label(""+st.on, px, py, k, rad*1.18, "center", 800);
+    }
+    if(live && st.terminus){
+      const px = sx(sp.x), py = sy(sp.y) - 1.9*PPM;
+      label("⚑", px, py, 'w', 0.9*PPM, "center", 800);
+    }
+  }
+
+  // The people. Aesthetics only, but they are why the stop reads as a stop.
+  for(const a of G.alight){
+    if(a.x < vb.x0 || a.x > vb.x1 || a.y < vb.y0 || a.y > vb.y1) continue;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, a.life*1.2);
+    inLocal(a.x, a.y, a.ang, ()=>{
+      ctx.fillStyle = shade(0.30);
+      ctx.beginPath(); ctx.ellipse(SUN_DX*0.30, SUN_DY*0.30, 0.30, 0.22, 0, 0, 6.2832); ctx.fill();
+      fillKey(-0.20, -0.17, 0.20, 0.17, a.coat > 0.5 ? 'z' : 'q', 0.17);
+      ctx.beginPath(); ctx.arc(0.02, 0, 0.13, 0, 6.2832); ctx.fillStyle = col('S'); ctx.fill();
+    });
+    ctx.restore();
+  }
+  for(let i=0;i<G.waiters.length;i++){
+    const st = G.stops[i];
+    for(const w of G.waiters[i]){
+      if(w.gone) continue;
+      if(w.x < vb.x0 || w.x > vb.x1 || w.y < vb.y0 || w.y > vb.y1) continue;
+      const bob = Math.sin(G.tick*0.05 + w.ph)*0.05;
+      const wave = st && !st.served && nextStop() === st;
+      inLocal(w.x, w.y + bob, w.ang, ()=>{
+        ctx.fillStyle = shade(0.30);
+        ctx.beginPath(); ctx.ellipse(SUN_DX*0.30, SUN_DY*0.30, 0.30, 0.22, 0, 0, 6.2832); ctx.fill();
+        fillKey(-0.20, -0.17, 0.20, 0.17, w.coat > 0.5 ? 'z' : 'q', 0.17);
+        ctx.beginPath(); ctx.arc(0.02, 0, 0.13, 0, 6.2832); ctx.fillStyle = col('S'); ctx.fill();
+        if(wave){
+          const a = Math.sin(G.tick*0.22 + w.ph)*0.5;
+          ctx.strokeStyle = col('S'); ctx.lineWidth = 0.07;
+          ctx.beginPath(); ctx.moveTo(0.06, 0.16);
+          ctx.lineTo(0.06 + Math.cos(a)*0.24, 0.16 + Math.sin(a)*0.24); ctx.stroke();
+        }
+      });
+    }
+  }
+}
+
+// ---------- route guide ----------
+// Sega's navigation trick (US6200138B1), in the one form a single street
+// allows: follow the ROAD to the stop while it is far away, and only point
+// straight at it once you are close enough for that not to be confusing.
+function drawRoute(){
+  const st = nextStop();
+  if(!st || G.state !== "play") return;
+  const bp = busS();
+  const ahead = st.s - bp.s;
+  const k = Math.abs(ahead) < 26 ? 'w' : (ahead > 0 ? 'e' : 'h');
+  const a = Math.min(bp.s, st.s), b = Math.max(bp.s, st.s);
+  ctx.save();
+  ctx.strokeStyle = col(k);
+  ctx.lineWidth = Math.max(1.5, 0.16*PPM);
+  ctx.globalAlpha = 0.34;
+  ctx.setLineDash([1.1*PPM, 1.0*PPM]);
+  ctx.lineDashOffset = -(G.tick*0.06*PPM) % (2.1*PPM);
+  ctx.beginPath();
+  const q0 = stopDoorQ(st);
+  for(let s2=a; s2<=b+0.001; s2+=Math.max(1.2,(b-a)/40)){
+    const u = (b-a) < 0.01 ? 1 : (s2-a)/(b-a);
+    const w = toWorld(s2, q0*(0.35 + 0.65*u));
+    if(s2 === a) ctx.moveTo(sx(w.x),sy(w.y)); else ctx.lineTo(sx(w.x),sy(w.y));
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+// Off-screen stop pointer, in screen space so distance never shrinks it away.
+function drawStopPointer(){
+  const st = nextStop();
+  if(!st || G.state !== "play") return;
+  const sp = stopPost(st);
+  const lx = sx(sp.x), ly = sy(sp.y);
+  const dx = devX(lx,ly), dy = devY(lx,ly);
+  const m = Math.min(VW,VH)*0.07;
+  if(dx > m && dx < VW-m && dy > m && dy < VH-m) return;
+  const cx = VW/2, cy = VH/2;
+  let vx = dx-cx, vy = dy-cy;
+  const L = Math.hypot(vx,vy) || 1; vx /= L; vy /= L;
+  const rx = Math.min(VW/2 - m, VH/2 - m);
+  const px = cx + vx*rx, py = cy + vy*rx;
+  const U = Math.max(11, Math.min(VW,VH)*0.024);
+  ctx.save();
+  ctx.translate(px,py); ctx.rotate(Math.atan2(vy,vx));
+  ctx.beginPath();
+  ctx.moveTo(U*1.1,0); ctx.lineTo(-U*0.6,-U*0.72); ctx.lineTo(-U*0.2,0); ctx.lineTo(-U*0.6,U*0.72);
+  ctx.closePath();
+  ctx.fillStyle = col('e'); ctx.globalAlpha = 0.9; ctx.fill();
+  ctx.restore();
+  const bp = busS();
+  label(Math.abs(Math.round(st.s - bp.s)) + " M", px, py + U*1.6, 'x', U*0.7, "center", 800);
+}
+
+// ---------- floating score pops ----------
+function drawPops(){
+  for(const p of G.pop){
+    const t = 1 - p.t/1.5;
+    const lx = sx(p.x), ly = sy(p.y) - t*2.2*PPM;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, p.t*1.6);
+    const U = Math.max(11, Math.min(VW,VH)*0.024);
+    label(p.s, devX(lx,ly), devY(lx,ly), p.key, U*1.15, "center", 800);
+    ctx.restore();
+  }
+}
+
 const topbarEl = document.getElementById("topbar");
 function hudFont(px, weight){
   ctx.font = (weight||700) + " " + Math.round(px) + "px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
@@ -1539,7 +2298,11 @@ function drawHUDHD(){
   label("KM/H", px + U*0.9 + spdW + U*0.45, mid + U*0.30, 'X', U*0.60, "left", 700);
   if(bus.v < -0.2) label("REV", px + U*0.9 + spdW + U*0.45, mid - U*0.55, 'y', U*0.60, "left", 800);
 
-  label((bp.s|0) + " / " + (TOTAL_S|0) + " M", px + pw/2, mid, 'X', U*0.78, "center", 700);
+  // The schedule, in the middle where you cannot miss it.
+  const low = G.clock < 15 && G.state === "play";
+  const ck = low ? ((G.tick>>4)&1 ? 'r' : 'y') : 'x';
+  label(fmtClock(G.clock), px + pw/2, mid - U*0.18, ck, U*1.5, "center", 800);
+  label("SCHEDULE", px + pw/2, mid + U*0.95, 'X', U*0.52, "center", 700);
 
   // Clearance: left flank on the left of the pair, right on the right.
   const bw = U*4.4, bh = U*0.62, bx = px + pw - U*0.9 - bw*2 - U*0.6;
@@ -1592,6 +2355,255 @@ function drawHUDHD(){
   }
 }
 
+// ---------- game HUD ----------
+function fmtClock(t){
+  t = Math.max(0, t);
+  const m = Math.floor(t/60), s2 = Math.floor(t - m*60);
+  return m + ":" + (s2 < 10 ? "0" : "") + s2;
+}
+function fmtNum(n){
+  n = Math.round(n);
+  const s2 = "" + Math.abs(n), out = [];
+  for(let i=0;i<s2.length;i++){
+    if(i > 0 && (s2.length - i) % 3 === 0) out.push(",");
+    out.push(s2[i]);
+  }
+  return (n < 0 ? "-" : "") + out.join("");
+}
+function wrapText(str, maxW, px){
+  hudFont(px, 600);
+  const words = str.split(" "), lines = [];
+  let line = "";
+  for(const w of words){
+    const t = line ? line + " " + w : w;
+    if(ctx.measureText(t).width > maxW && line){ lines.push(line); line = w; }
+    else line = t;
+  }
+  if(line) lines.push(line);
+  return lines;
+}
+// Rounded pill helper for the two HUD strips.
+function strip(x,y,w,h){ panel(x,y,w,h,h/2); }
+
+function drawGameHUD(){
+  const U  = Math.max(11, Math.min(VW,VH) * 0.024);
+  const bp = busS();
+  const y2 = hudTop() + U*2.9 + U*0.55;
+  const h2 = U*1.9;
+
+  // Strip two: the shift. Score, multiplier, load, distance.
+  const parts = [];
+  parts.push({ t:fmtNum(G.score), k:'x', big:true });
+  parts.push({ t:"×" + G.mult, k:G.mult > 1 ? 'e' : 'X', pips:true });
+  parts.push({ t:G.riders + "/" + CAP, k:G.riders > 0 ? 'h' : 'X', tag:"ABOARD" });
+  parts.push({ t:(bp.s|0) + "/" + (TOTAL_S|0) + "M", k:'X' });
+
+  hudFont(U*0.86, 800);
+  let pw2 = U*1.4;
+  for(const p of parts) pw2 += ctx.measureText(p.t).width + (p.pips ? U*2.6 : U*0.3) + U*1.1;
+  pw2 = Math.min(VW - 16, pw2);
+  const px2 = (VW - pw2)/2;
+  strip(px2, y2, pw2, h2);
+
+  let cx = px2 + U*0.7;
+  for(const p of parts){
+    hudFont(U*0.86, 800);
+    const w = ctx.measureText(p.t).width;
+    label(p.t, cx, y2 + h2/2, p.k, U*0.86, "left", 800);
+    cx += w + U*0.35;
+    if(p.pips){
+      for(let i=0;i<5;i++){
+        const on = i < G.mult;
+        fillRR(cx, y2 + h2/2 - U*0.30, cx + U*0.34, y2 + h2/2 + U*0.30,
+               on ? col('e') : "rgba(255,255,255,0.16)", U*0.10);
+        cx += U*0.46;
+      }
+      cx += U*0.2;
+    }
+    if(p.tag){ label(p.tag, cx, y2 + h2/2, 'X', U*0.55, "left", 700); cx += ctx.measureText(p.tag).width*0.62 + U*0.4; }
+    cx += U*0.5;
+  }
+
+  // Comfort, as a thin bar under the strip -- a combo gauge, never a health bar.
+  if(G.riders > 0){
+    const cbw = pw2*0.55, cbx = (VW - cbw)/2, cby = y2 + h2 + U*0.30;
+    fillRR(cbx, cby, cbx + cbw, cby + U*0.24, "rgba(255,255,255,0.13)", U*0.12);
+    const ck = G.holdT > 0 ? 'w' : (G.comfort < 0.5 ? 'r' : G.comfort < 0.78 ? 'y' : 'e');
+    fillRR(cbx, cby, cbx + cbw*G.comfort, cby + U*0.24, col(ck), U*0.12);
+    if(G.holdT > 0)
+      label("BRACED", cbx + cbw + U*0.5, cby + U*0.12, 'w', U*0.55, "left", 800);
+    else if(G.holdCool <= 0)
+      label("HOLD ON  [H]", cbx + cbw + U*0.5, cby + U*0.12, 'X', U*0.55, "left", 700);
+  }
+
+  // Bottom card: the next stop, or the boarding progress while docked.
+  const st = nextStop();
+  if(st){
+    const cw = Math.min(VW - 24, Math.max(300, U*26)), cxx = (VW - cw)/2;
+    // Clear of the keyboard hint and the variant strip along the bottom edge.
+    const ch = U*3.2, cyy = VH - ch - Math.max(U*3.4, 88);
+    panel(cxx, cyy, cw, ch, 12);
+    if(G.board > 0){
+      const f = 1 - G.board/Math.max(0.01, G.boardLen);
+      label("DOORS OPEN  ·  " + st.name, cxx + U*0.9, cyy + U*0.95, 'h', U*0.78, "left", 800);
+      fillRR(cxx + U*0.9, cyy + ch - U*1.15, cxx + cw - U*0.9, cyy + ch - U*0.72,
+             "rgba(255,255,255,0.14)", U*0.22);
+      fillRR(cxx + U*0.9, cyy + ch - U*1.15,
+             cxx + U*0.9 + (cw - U*1.8)*f, cyy + ch - U*0.72, col('e'), U*0.22);
+      label(grade(G.boardQ), cxx + cw - U*0.9, cyy + U*0.95, 'e', U*0.72, "right", 800);
+    } else {
+      const d = Math.round(st.s - bp.s);
+      label("NEXT", cxx + U*0.9, cyy + U*0.86, 'X', U*0.58, "left", 700);
+      label(st.name, cxx + U*0.9 + U*2.6, cyy + U*0.90, 'x', U*0.92, "left", 800);
+      label((d >= 0 ? d : 0) + " M", cxx + cw - U*0.9, cyy + U*0.90, d < 20 ? 'e' : 'x',
+            U*0.92, "right", 800);
+      const sub = st.terminus ? "TERMINUS  ·  ALL CHANGE"
+                : (st.blocked ? st.on + " WAITING  ·  CAR IN THE STOP"
+                              : st.on + " WAITING  ·  " + st.off + " OFF");
+      label(sub, cxx + U*0.9, cyy + ch - U*0.95, st.blocked ? 'h' : 'X', U*0.62, "left", 700);
+      if(st.missed) label("REVERSE", cxx + cw - U*0.9, cyy + ch - U*0.95, 'h', U*0.62, "right", 800);
+      else if(G.next + 1 < G.stops.length)
+        label("THEN " + G.stops[G.next+1].name, cxx + cw - U*0.9, cyy + ch - U*0.95,
+              'X', U*0.62, "right", 700);
+    }
+  }
+
+  // Transient line, centred, above the bottom card.
+  if(G.msgT > 0){
+    hudFont(U*0.95, 800);
+    const tw = ctx.measureText(G.msg).width;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, G.msgT*2.2);
+    panel((VW-tw)/2 - U*0.9, VH*0.72 - U*1.05, tw + U*1.8, U*2.1, 11);
+    label(G.msg, VW/2, VH*0.72, G.msgKey, U*0.95, "center", 800);
+    ctx.restore();
+  }
+}
+
+// ---------- front-end cards ----------
+// One tappable surface for every non-play screen, so the whole front end is
+// a single verb: tap. Hit rectangles are recorded as they are drawn.
+function cardHit(x,y,w,h,act){ G.hits.push({x,y,w,h,act}); }
+function drawCards(){
+  G.hits = [];
+  if(G.state === "play") return;
+  const U = Math.max(12, Math.min(VW,VH)*0.026);
+  ctx.fillStyle = "rgba(6,8,12,0.72)"; ctx.fillRect(0,0,VW,VH);
+
+  const cw = Math.min(VW - U*2, U*30);
+  const cx = (VW - cw)/2;
+  const pad = U*1.4;
+
+  if(G.state === "title"){
+    const ch = U*20;
+    const cy = Math.max(U*1.5, (VH - ch)/2);
+    panel(cx, cy, cw, ch, 16);
+    label("ONE STREET", cx + cw/2, cy + U*3.0, 'x', U*2.6, "center", 800);
+    label("HD", cx + cw/2, cy + U*5.2, 'h', U*1.3, "center", 800);
+    label("A 12 METRE BUS. A STREET THAT DOES NOT WANT IT.",
+          cx + cw/2, cy + U*7.0, 'X', U*0.66, "center", 700);
+
+    for(let i=0;i<LEVELS.length;i++){
+      const L = LEVELS[i];
+      const ry = cy + U*8.6 + i*U*3.3, rh = U*2.9;
+      const on = G.pick === i;
+      fillRR(cx + pad, ry, cx + cw - pad, ry + rh,
+             on ? "rgba(255,181,36,0.16)" : "rgba(255,255,255,0.05)", 12);
+      if(on){
+        rr(cx + pad, ry, cw - pad*2, rh, 12);
+        ctx.strokeStyle = col('h'); ctx.lineWidth = 1.5; ctx.stroke();
+      }
+      label((i+1) + "", cx + pad + U*0.8, ry + rh/2, on ? 'h' : 'X', U*1.05, "left", 800);
+      label(L.name, cx + pad + U*2.2, ry + rh*0.36, 'x', U*1.0, "left", 800);
+      label(L.route + "  ·  " + L.sub + "  ·  " + L.stops.length + " STOPS",
+            cx + pad + U*2.2, ry + rh*0.72, 'X', U*0.6, "left", 700);
+      label(G.best[i] ? "BEST " + fmtNum(G.best[i]) : "NEW",
+            cx + cw - pad - U*0.8, ry + rh/2, G.best[i] ? 'e' : 'X', U*0.66, "right", 800);
+      cardHit(cx + pad, ry, cw - pad*2, rh, "pick" + i);
+    }
+    label("TAP A ROUTE, THEN TAP AGAIN TO DRIVE  ·  SPACE",
+          cx + cw/2, cy + ch - U*1.5, 'X', U*0.62, "center", 700);
+    cardHit(0, 0, VW, VH, "advance");
+    return;
+  }
+
+  if(G.state === "brief"){
+    const L = levelData();
+    const lines = wrapText(L.brief, cw - pad*2, U*0.72);
+    const ch = U*(10.6 + lines.length*1.15 + L.stops.length*1.25);
+    const cy = Math.max(U*1.2, (VH - ch)/2);
+    panel(cx, cy, cw, ch, 16);
+    label("ROUTE " + (G.lvl+1) + " OF " + LEVELS.length, cx + pad, cy + U*1.9, 'h', U*0.66, "left", 800);
+    label("PAR " + fmtClock(L.par), cx + cw - pad, cy + U*1.9, 'X', U*0.66, "right", 800);
+    label(L.name, cx + pad, cy + U*3.9, 'x', U*1.9, "left", 800);
+    label(L.route + "  ·  " + L.sub, cx + pad, cy + U*5.5, 'X', U*0.66, "left", 700);
+    let ly = cy + U*7.2;
+    for(const ln of lines){ label(ln, cx + pad, ly, 'x', U*0.72, "left", 600); ly += U*1.15; }
+    ly += U*0.7;
+    for(const st of L.stops){
+      label(st.terminus ? "◉" : "○", cx + pad, ly, st.terminus ? 'h' : 'e', U*0.8, "left", 800);
+      label(st.name, cx + pad + U*1.3, ly, 'x', U*0.78, "left", 700);
+      label(st.terminus ? "ALL CHANGE" : st.on + " ON  ·  " + st.off + " OFF",
+            cx + cw - pad, ly, 'X', U*0.62, "right", 700);
+      ly += U*1.25;
+    }
+    label("TAP TO PULL AWAY", cx + cw/2, cy + ch - U*1.3, 'h', U*0.72, "center", 800);
+    cardHit(0, 0, VW, VH, "advance");
+    return;
+  }
+
+  if(G.state === "result"){
+    const R = G.result || {win:false};
+    const rows = [
+      ["STOPS SERVED", R.served + " / " + R.total],
+      ["PASSENGERS",   "" + R.moved],
+      ["TIME LEFT",    fmtClock(R.left)],
+      ["TIME BONUS",   "+" + fmtNum(R.timeBonus)]
+    ];
+    const ch = U*(11.5 + rows.length*1.5);
+    const cy = Math.max(U*1.2, (VH - ch)/2);
+    panel(cx, cy, cw, ch, 16);
+    label(R.win ? "ROUTE COMPLETE" : "OUT OF TIME", cx + cw/2, cy + U*2.6,
+          R.win ? 'e' : 'r', U*1.7, "center", 800);
+    label(levelData().name, cx + cw/2, cy + U*4.3, 'X', U*0.7, "center", 700);
+    let ry = cy + U*6.4;
+    for(const r of rows){
+      label(r[0], cx + pad, ry, 'X', U*0.7, "left", 700);
+      label(r[1], cx + cw - pad, ry, 'x', U*0.78, "right", 800);
+      ry += U*1.5;
+    }
+    ctx.strokeStyle = "rgba(160,175,195,0.20)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(cx+pad, ry-U*0.5); ctx.lineTo(cx+cw-pad, ry-U*0.5); ctx.stroke();
+    label("SCORE", cx + pad, ry + U*0.7, 'x', U*0.86, "left", 800);
+    label(fmtNum(R.score), cx + cw - pad, ry + U*0.7, 'h', U*1.4, "right", 800);
+    label("BEST " + fmtNum(G.best[G.lvl]), cx + cw - pad, ry + U*2.1, 'X', U*0.62, "right", 700);
+    const cta = !R.win ? "TAP TO RUN IT AGAIN"
+              : (G.lvl < LEVELS.length-1 ? "TAP FOR " + LEVELS[G.lvl+1].name : "TAP TO FINISH THE SHIFT");
+    label(cta, cx + cw/2, cy + ch - U*1.3, 'h', U*0.72, "center", 800);
+    cardHit(0, 0, VW, VH, "advance");
+    return;
+  }
+
+  if(G.state === "shift"){
+    const ch = U*(9.5 + LEVELS.length*1.6);
+    const cy = Math.max(U*1.2, (VH - ch)/2);
+    panel(cx, cy, cw, ch, 16);
+    label("SHIFT COMPLETE", cx + cw/2, cy + U*2.8, 'e', U*1.9, "center", 800);
+    label("BOTH ROUTES DRIVEN", cx + cw/2, cy + U*4.5, 'X', U*0.68, "center", 700);
+    let ry = cy + U*6.6;
+    for(let i=0;i<LEVELS.length;i++){
+      label(LEVELS[i].name, cx + pad, ry, 'x', U*0.78, "left", 700);
+      label(fmtNum(G.best[i]), cx + cw - pad, ry, 'x', U*0.78, "right", 800);
+      ry += U*1.6;
+    }
+    label("SHIFT TOTAL", cx + pad, ry + U*0.4, 'x', U*0.86, "left", 800);
+    label(fmtNum(G.runScore), cx + cw - pad, ry + U*0.4, 'h', U*1.4, "right", 800);
+    label("TAP FOR THE DEPOT", cx + cw/2, cy + ch - U*1.3, 'h', U*0.72, "center", 800);
+    cardHit(0, 0, VW, VH, "advance");
+    return;
+  }
+}
+
 // Mood + squeeze vignette, drawn over the world and under the HUD.
 function drawVignette(){
   const r0 = Math.min(VW,VH)*0.32, r1 = Math.hypot(VW,VH)*0.56;
@@ -1628,12 +2640,16 @@ function render(rdt){
   ctx.translate(W/2,H/2); ctx.scale(zoomEase,zoomEase); ctx.translate(-W/2,-H/2);
 
   drawGround();
+  drawStops();
+  drawRoute();
   drawBlockShadows();
   drawBlocks();
 
   for(const b of bins) drawBin(b);
   for(const o of obstacles){
-    if(o.kind === "van")
+    if(o.kind === "skip")
+      drawSkip(o);
+    else if(o.kind === "van")
       drawRig(o.x,o.y,o.ang, VAN_L/2, VAN_W/2, 'v','V',
               { cabinFrom:0.30, cabinTo:1.55, blind:true, hazard:o.hazard && ((frameNo>>4)&1) });
     else
@@ -1649,6 +2665,8 @@ function render(rdt){
   drawSoftDots(puffs, 186, 192, 202);
   drawSparks();
   ctx.restore();
+  drawPops();
+  drawStopPointer();
 
   // The waiting car's marker lives in screen space so it never shrinks away.
   if(car.mode === "wait" && ((frameNo>>3)&1)){
@@ -1658,7 +2676,8 @@ function render(rdt){
   }
 
   drawVignette();
-  drawHUDHD();
+  if(G.state === "play"){ drawHUDHD(); drawGameHUD(); }
+  drawCards();
 }
 
 // ============================================================
@@ -1709,6 +2728,10 @@ function sHorn(){ beep(233,0.42,"sawtooth",0.05); beep(311,0.42,"square",0.035);
 function sBump(i){ beep(90+Math.random()*40, Math.min(0.22,0.06+i*0.02), "sawtooth", 0.05); }
 function sBin(){ beep(320+Math.random()*260, 0.05, "square", 0.035); }
 function sChime(){ beep(880,0.07); setTimeout(()=>beep(1320,0.09),70); }
+function sDoors(){ beep(180,0.20,"sine",0.035); setTimeout(()=>beep(520,0.10,"square",0.03),90); }
+function sJolt(){ beep(70,0.24,"sawtooth",0.06); setTimeout(()=>beep(150,0.10,"square",0.03),60); }
+function sHold(){ beep(1180,0.09,"square",0.045); setTimeout(()=>beep(1180,0.09,"square",0.045),150); }
+function sTick(){ beep(1500,0.035,"square",0.028); }
 
 // ============================================================
 // Input
@@ -1725,7 +2748,35 @@ function bindHold(id,key){
   el.addEventListener("pointerleave",off); el.addEventListener("pointercancel",off);
 }
 bindHold("up","up"); bindHold("down","down"); bindHold("left","left"); bindHold("right","right");
-function pressHorn(){ audioInit(); wake(); if(!input.horn){ input.horn=true; input.hornEdge=true; } }
+// Off the play screen every button becomes the same button: continue.
+function pressHorn(){
+  audioInit(); wake();
+  if(G.state !== "play"){ advance(); return; }
+  if(!input.horn){ input.horn=true; input.hornEdge=true; }
+}
+const holdBtn = document.getElementById("holdbtn");
+if(holdBtn) holdBtn.addEventListener("pointerdown",e=>{ e.preventDefault(); audioInit(); wake(); holdOn(); });
+// Tapping the canvas drives the front end; the cards record their own rects.
+canvas.addEventListener("pointerdown", e=>{
+  audioInit(); wake();
+  if(G.state === "play") return;
+  const r = canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : {left:0,top:0};
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  for(let i=G.hits.length-1;i>=0;i--){
+    const h = G.hits[i];
+    if(x < h.x || x > h.x+h.w || y < h.y || y > h.y+h.h) continue;
+    if(h.act.indexOf("pick") === 0){
+      const n = parseInt(h.act.slice(4),10);
+      if(G.pick === n){ advance(); } else { G.pick = n; loadLevel(n); resetAll(); buildWaiters(); }
+    } else advance();
+    return;
+  }
+  advance();
+});
+function restart(){
+  if(G.state === "play") startLevel(G.lvl);
+  else { G.state = "title"; loadLevel(G.pick); resetAll(); buildWaiters(); }
+}
 const hornBtn = document.getElementById("horn");
 if(hornBtn){
   hornBtn.addEventListener("pointerdown",e=>{ e.preventDefault(); pressHorn(); });
@@ -1735,9 +2786,18 @@ if(hornBtn){
 const KEYMAP = {ArrowLeft:"left",ArrowRight:"right",ArrowUp:"up",ArrowDown:"down",
                 a:"left",d:"right",w:"up",s:"down",A:"left",D:"right",W:"up",S:"down"};
 window.addEventListener("keydown",e=>{
-  if(KEYMAP[e.key]){ input[KEYMAP[e.key]]=true; e.preventDefault(); hideHint(); wake(); }
-  if(e.key===" "){ if(!e.repeat) pressHorn(); e.preventDefault(); hideHint(); }
-  if(e.key==="r"||e.key==="R") resetAll();
+  if(KEYMAP[e.key] && G.state === "play"){ input[KEYMAP[e.key]]=true; e.preventDefault(); hideHint(); wake(); }
+  else if(KEYMAP[e.key] && G.state === "title" && (e.key==="ArrowUp"||e.key==="ArrowDown"||e.key==="w"||e.key==="s")){
+    G.pick = (G.pick + (e.key==="ArrowUp"||e.key==="w" ? LEVELS.length-1 : 1)) % LEVELS.length;
+    loadLevel(G.pick); resetAll(); buildWaiters(); e.preventDefault();
+  }
+  if(e.key===" "||e.key==="Enter"){ if(!e.repeat) pressHorn(); e.preventDefault(); hideHint(); }
+  if(e.key==="h"||e.key==="H") holdOn();
+  if(e.key==="1"||e.key==="2"){
+    const n = (+e.key)-1;
+    if(n < LEVELS.length && G.state !== "play"){ G.pick = n; loadLevel(n); resetAll(); buildWaiters(); }
+  }
+  if(e.key==="r"||e.key==="R") restart();
   if(e.key==="f"||e.key==="F") toggleFull();
 });
 window.addEventListener("keyup",e=>{
@@ -1809,7 +2869,7 @@ function refreshGhost(){
 if(ghostBtn) ghostBtn.addEventListener("click",()=>{ showGhost=!showGhost; refreshGhost(); });
 refreshGhost();
 const resetBtn = document.getElementById("resetBtn");
-if(resetBtn) resetBtn.addEventListener("click",()=>resetAll());
+if(resetBtn) resetBtn.addEventListener("click",()=>restart());
 
 document.addEventListener("touchmove",e=>e.preventDefault(),{passive:false});
 document.addEventListener("gesturestart",e=>e.preventDefault());
@@ -1829,13 +2889,21 @@ function resetAll(){
   updateCam(0, true);
 }
 resize();
+loadLevel(0);
 resetAll();
+buildWaiters();
 
 const STEP = 1000/60; let acc = 0, last = performance.now();
 function frame(now){
   const raw = now - last;
   acc += raw; last = now; if(acc > 200) acc = 200;
-  while(acc >= STEP){ update(); acc -= STEP; }
+  while(acc >= STEP){
+    // Off the play screen the bus takes no orders; it just coasts to a stop.
+    if(G.state !== "play"){ input.left = input.right = input.up = input.down = false; }
+    update();
+    gameTick();
+    acc -= STEP;
+  }
   idleT += raw/1000;
   if(idleT > 3.5 && Math.abs(bus.v) > 1.5){
     if(topbarEl && topbarEl.classList) topbarEl.classList.add("dim");
@@ -1863,6 +2931,10 @@ if(typeof window!=="undefined" && window.__busHook){
     honk:()=>{ input.hornEdge = true; },
     keys:()=>({ tone:KEY_TONE, gbc:GBC }),
     blocks:()=>BLOCKS, props:()=>PROPS,
+    game:G, levels:LEVELS, loadLevel, startLevel, advance, holdOn, restart,
+    gameTick, nextStop, stopPost, stopDoorQ, dockAt, buildWaiters,
+    // Physics + game together, which is what the real loop runs.
+    play:n=>{ for(let i=0;i<(n||60);i++){ update(); gameTick(); } },
     viewport:()=>({VW,VH,W,H,DPR,PPM,PPM_BASE,rot90,zoom:ZOOMS[zoomStep]}),
     setZoomStep:i=>{ zoomStep=i; resize(); },
     resize,

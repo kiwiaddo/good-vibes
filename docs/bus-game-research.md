@@ -570,6 +570,11 @@ Build exactly this, and nothing else. **No score, no timer, no passengers.**
 exists.** If it isn't, no amount of content will save it, and you should re-tune the
 physics and street width before building anything else.
 
+> **Status: passed.** `bus.html` is that test, unchanged. `bus-4k.html` is the
+> same driving model with the shift built on top — see §17 for what of the
+> list below is now done.
+
+
 Suggested order after that gate passes:
 
 1. Hills (§2.4) — proves the elevation model reads top-down
@@ -590,6 +595,61 @@ Suggested order after that gate passes:
 | Handmade or procedural city? | **Handmade.** See §13 |
 | Is the comfort meter visible? | Yes, but as a **combo/multiplier bar**, never a health bar |
 | Portrait or landscape on mobile? | **Landscape** — you need horizontal look-ahead for a long vehicle |
+
+---
+
+## 17. What has actually been built
+
+The one-street gate test (§15) passed, and `bus-4k.html` now carries the shift
+layer on top of it: **two complete routes**, MILL LANE and MARKET HILL. This
+section records which of the recommendations above are now decisions in code,
+so the next person does not have to re-derive them from the source.
+
+### Built
+
+| Research | In the build |
+| --- | --- |
+| §2.3 mass coupling | 16 passengers add ~43% to the braking distance (17.0 m → 24.3 m from 43 km/h). Applied as a post-step correction so the shared physics block is untouched |
+| §3 three pressures | Clock, geometry and comfort all run at once, and disagree |
+| §3 the "Hold on!" verb | `HOLD ON` / **H**: 2.2 s of penalty-free violence for 3 s of clock, 6 s cooldown |
+| §4 doors as a verb | Stop with the front door at the kerb; boarding time is 0.9 s at a perfect dock, 3.2 s at a scruffy one |
+| §4 the overshoot | Sail past and the stop stays live — reverse back to it |
+| §4 fare colour-coding | The floating count over each stop is green ≥5 waiting, amber 3–4, red ≤2 |
+| §4 the navigation trick | The route ribbon follows the *road* to the stop, and turns white once you are within 26 m |
+| §4 see the next stops | The bottom card names the next stop and the one after it |
+| §5 measure in bus-widths | MILL LANE's worst pinch leaves 8 cm between the kerbs; MARKET HILL's leaves 6 cm, and its compound corner 12 cm |
+| §5 compound corners late | MARKET HILL only; MILL LANE has none |
+| §5 a recurring nemesis | The skip. Once in MARKET HILL's first pinch, again on the apex of the compound corner |
+| §6 parked cars as jokes | Both routes ship the double-parked van and the straddler; MARKET HILL adds *the car parked in the bus stop*, which forces you to board from the middle of the road and caps that dock's grade |
+| §12 score | Fares × dock quality × multiplier, squeeze bonuses, a time bonus of 60/s, minus damage |
+| §12 combo | Breaks on a real collision, survives scrapes, steps to ×5 |
+| §12 instant restart | Losing a route drops you straight back on its briefing card |
+| §13 no hard fail | Damage costs 2 s and the combo. Only the clock ends a run |
+| §13 hand-authored | Both routes are node-by-node authored; procedural work is limited to street dressing and building blocks |
+| §16 hybrid route | Scheduled stops only, so far — see below |
+| §16 arcade-honest | Unchanged, and still proven frame-exact against the prototype |
+| §16 comfort as a multiplier | Drawn as a combo gauge under the score, never as a health bar |
+| §16 landscape on mobile | Portrait rotates the *world* a quarter turn rather than cramping the framing |
+
+### Deliberately not built yet
+
+- **Hills (§2.4).** The elevation model was the first item on the post-gate
+  list and is still the biggest missing piece. Rollback at a stop on a grade is
+  the single funniest thing on the list.
+- **Illegal hails (§16's "hybrid").** Only the scheduled half exists. Hails
+  want a passenger who appears mid-street and a decision about whether to take
+  them, which needs the event deck (§8) to be worth building.
+- **The event deck (§8)** and **districts (§12)**.
+- **The bendy bus as endgame (§12).** `bus-bendy.html` still has the physics;
+  nothing connects it to the shift.
+
+### Numbers worth keeping
+
+Par times were tuned against a scripted driver in `tools/test-bus.js` §14 —
+Stanley lateral control onto a lane clamped against every free interval in the
+look-ahead window. It is a *worse* driver than a person and finishes MILL LANE
+with 28 s spare and MARKET HILL with 45 s, which is the intended margin: a
+competent human is comfortable, a first-timer is not.
 
 ---
 

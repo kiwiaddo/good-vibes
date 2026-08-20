@@ -10,6 +10,9 @@
 //
 // Params: s/q/dh (place along/across/heading), v (speed), st (steer -1..1),
 //         car (oncoming car's s), n (frames to settle), pal (color|green|gray).
+// bus-4k also takes: lvl (route), state (title|brief|play|result|shift),
+//         stop (index of the next stop), riders, board (force the doors open),
+//         win (result card outcome). Ignored by the builds without a shift.
 // NOTE: headless Chromium clamps the window to a 500 px minimum width, so a
 // 390 px phone cannot be shot directly -- use a matching aspect (e.g. 500x1082).
 const fs = require("fs");
@@ -38,7 +41,19 @@ setTimeout(function(){
   var h = window.H; if(!h) return;
   var p = new URLSearchParams(location.search);
   if(p.get("pal")) h.setPal(p.get("pal"));
-  h.reset();
+  if(h.startLevel) h.startLevel(+(p.get("lvl")||0)); else h.reset();
+  if(h.game){
+    var G = h.game;
+    if(p.get("stop")){ G.next = +p.get("stop"); for(var k=0;k<G.next;k++) G.stops[k].served = true; }
+    if(p.get("riders")) G.riders = +p.get("riders");
+    if(p.get("state")) G.state = p.get("state");
+    if(p.get("board")){ G.board = 1.4; G.boardLen = 2.0; G.boardQ = 0.82; G.doorT = 1; }
+    if(G.state === "result" || G.state === "shift"){
+      G.result = { win:p.get("win") !== "0", timeBonus:1140, left:38, moved:24,
+                   score:41250, served:G.stops.length, total:G.stops.length };
+      G.runScore = 41250;
+    }
+  }
   if(p.get("s")) h.place(+p.get("s"), +(p.get("q")||0), +(p.get("dh")||0));
   if(p.get("v"))  h.bus.v = +p.get("v");
   if(p.get("st")){ h.bus.steerNorm = +p.get("st"); h.bus.steer = h.bus.steerNorm * 0.55; }

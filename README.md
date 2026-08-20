@@ -11,7 +11,7 @@ no install and no build step (just static HTML + Canvas).
 | 🛢️ **Donkey Kong** — climb the girders, leap the barrels, rescue the princess | Playable |
 | ☂️ **Lemmings** — guide the little fellows to the exit with 8 classic skills | Playable |
 | 🚌 **One Street** — thread a 12 m bus down a street that does not want you there | Prototype |
-| 🚌 **One Street HD** — the same drive, full-screen and resolution-independent | Prototype |
+| 🚌 **One Street HD** — two routes, a manifest, a schedule and a comfort multiplier | Playable |
 | ❓ Coming soon | — |
 
 The landing page (`index.html`) is a hub of game cards; each game lives on its
@@ -68,25 +68,51 @@ them to the exit before the timer runs out.
 
 ## One Street — controls
 
-Two builds of the same game. `bus.html` is the original 320×192 pixel-art gate
-test; `bus-4k.html` is the identical simulation with a full-screen renderer that
-scales from a phone to a 4K monitor (and turns the world a quarter turn in
-portrait so the street runs down the long axis). `bus-bendy`, `bus-chase` and
-`bus-shift` are design variants — an 18 m articulated bus, a rotating camera,
-and a shift clock with passenger stops.
+`bus.html` is the original 320×192 pixel-art gate test: free driving, no score,
+no clock. **`bus-4k.html` is the game** — the same driving model, a full-screen
+renderer that scales from a phone to a 4K monitor (and turns the world a
+quarter turn in portrait so the street runs down the long axis), and two
+complete routes to drive. `bus-bendy`, `bus-chase` and `bus-shift` are design
+variants — an 18 m articulated bus, a rotating camera, and a shift clock.
 
 | Action | Touch | Keyboard |
 | --- | --- | --- |
 | Throttle / brake &amp; reverse | ▲ / ▼ | ↑ ↓ or W S |
 | Steer | ◀ / ▶ | ← → or A D |
 | Horn (makes a stubborn car move) | HORN | Space |
-| Reset | RESET chip | R |
+| Hold on! (HD) | HOLD ON | H |
+| Continue a menu (HD) | tap anywhere | Space / Enter |
+| Restart the route | RESET chip | R |
 | Doors (`bus-shift` only) | DOORS | Shift or E |
 
 The trail ahead of the bus is the **swept path** — where the tail will end up
 if you hold the current steering (dotted in `bus.html`, a ribbon in HD). Tail
 swing is the whole game, so it is shown rather than hidden. HD adds a **ZOOM**
 chip and, on desktop, **F** for fullscreen.
+
+### Driving a shift (One Street HD)
+
+Two routes: **MILL LANE**, the street the physics were tuned on, and **MARKET
+HILL**, which is longer, tighter and has a skip in the first pinch. Pick one on
+the title card and tap again to pull away.
+
+- **Dock at each stop.** Get the front door beside the kerb, stop, and the
+  doors open themselves. The closer and straighter you park, the faster
+  everyone boards — a perfect dock is under 1.5 seconds, a scruffy one is
+  three. Sail past a stop and you have to reverse back to it.
+- **Every fare buys time.** The clock is the only thing that ends a run.
+  Serving a stop adds to it; crunching into something takes 2 s off and
+  resets your multiplier. Nothing else can end a shift — crashes are
+  expensive, never fatal.
+- **A full bus is a different vehicle.** Sixteen passengers add about half
+  again to your braking distance. A good pickup run makes the next corner
+  harder, which is the point.
+- **Comfort is a multiplier, not a health bar.** Standing passengers get
+  thrown by hard braking, hard cornering and kerbs. Press **HOLD ON** for two
+  seconds of penalty-free violence — it costs 3 s of clock, and it is worth
+  it going into a pinch.
+- Squeezing through a gap cleanly pays out, and every second clean thing you
+  do steps the multiplier up to ×5.
 
 ## Deployment (GitHub Pages)
 

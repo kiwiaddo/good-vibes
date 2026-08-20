@@ -17,7 +17,7 @@ play well on phones (touch controls, responsive, scroll/zoom suppressed).
 | `lemmings.html` | The **Lemmings game**, fully self-contained. Pixel-destructible terrain + the 8 classic skills, tuned for touch. |
 | `bus.html` | **ONE STREET** — the bus-driving gate test from `docs/bus-game-research.md` §15. 320×192, pixel-art. |
 | `bus-bendy.html`, `bus-chase.html`, `bus-shift.html` | Design variants of it: articulated bus / rotating camera / clock + stops. |
-| `bus-4k.html` | **ONE STREET HD** — same simulation, full-screen resolution-independent renderer. |
+| `bus-4k.html` | **ONE STREET HD** — the actual game. RIGID's driving model, a full-screen renderer, and two complete routes with stops, a manifest, a clock and a comfort multiplier. |
 | `docs/bus-game-research.md` | Research behind the bus game. |
 | `tools/` | Headless harness, physics-parity check, screenshot tool. |
 | `.github/workflows/deploy-pages.yml` | Deploys the repo root to GitHub Pages. |
@@ -119,19 +119,27 @@ palette is `color`. Key pieces:
 
 There are **five** bus pages live; that is deliberate but temporary.
 
-- `bus.html` (RIGID) is the baseline gate test. `bus-bendy` / `bus-chase` /
-  `bus-shift` each isolate one design axis so they can be compared against it.
-- `bus-4k.html` is not a fifth design. It is RIGID's simulation with a real
-  renderer, built to answer "can this look good", not "should it play
-  differently".
-- **Open decision, owned by the user:** which of the four designs survives.
-  Once they call it, strip the others plus their nav links and their
-  variant-specific harness sections. Do not decide this unilaterally.
+- `bus.html` (RIGID) is the baseline gate test — free driving, no score, no
+  clock. It still exists because it is the reference the physics are checked
+  against, not because anyone should play it.
+- `bus-bendy` / `bus-chase` / `bus-shift` each isolate one design axis so they
+  can be compared against RIGID.
+- `bus-4k.html` is **the game**. It started as RIGID's simulation with a real
+  renderer; it now carries the shift layer on top of it (two routes, stops,
+  passengers, schedule, comfort multiplier). It is still RIGID's driving
+  model, so it does not settle the variant question.
+- **Open decision, still owned by the user:** which of the four *designs*
+  survives — rigid vs articulated vs rotating camera. Once they call it,
+  strip the others plus their nav links and their variant-specific harness
+  sections. Do not decide this unilaterally.
 - Recorded recommendation, not a verdict: keep RIGID, treat BENDY as
   unlockable content, drop CHASE (rotating the camera caps look-ahead at 9 m
-  where world-fixed reaches 20 m), and playtest SHIFT against RIGID.
+  where world-fixed reaches 20 m), and playtest SHIFT against RIGID. Note that
+  SHIFT's clock-and-stops idea has since been built properly in `bus-4k`, so
+  what is left to compare there is only the variant's own tuning.
 
-Section 16 of `docs/bus-game-research.md` holds the remaining open questions.
+Section 16 of `docs/bus-game-research.md` holds the remaining open questions;
+section 17 records which of them the HD build has now answered in code.
 
 ## Conventions
 
@@ -143,9 +151,10 @@ Section 16 of `docs/bus-game-research.md` holds the remaining open questions.
 - **Nothing but the games belongs in the repo root.** Pages publishes the whole
   root, so a scratch file written there ships to the live site. Two have
   escaped that way already. Write scratch output to a temp dir, never `.`.
-- `bus-4k.html` and `bus.html` must stay the same simulation. After any edit
-  near the copied block, run `node tools/parity-bus.js` and require exactly
-  zero drift.
+- `bus-4k.html` and `bus.html` must stay the same **driving model**. After any
+  edit near the simulation block, run `node tools/parity-bus.js` and require
+  exactly zero drift. The game layer is allowed to exist, but only outside
+  `update()` — see below.
 
 ## bus.html / bus-4k.html architecture
 
@@ -156,13 +165,23 @@ half-width, SAT/OBB collision with minimum-translation resolution, ray-march
 clearance probes feeding the squeeze state, and an oncoming car that telegraphs,
 yields, backs into a bay, or waits for the horn.
 
-`bus-4k.html` **copies that simulation block verbatim** (bus.html lines 215–628
-and 631–721) and replaces only the renderer, so the two cannot drift:
+`bus-4k.html` **copies that simulation code verbatim** and replaces the
+renderer, so the two cannot drift. What it does *not* copy any more is the
+world **data**: the street, the parked cars and the bins were lifted out of the
+block into `LEVELS[]` and are refilled by `loadLevel()`. Level 1 is the
+gate-test street node for node, which is what keeps the parity claim true.
 
 - `tools/parity-bus.js` drives both files with an identical scripted input
   stream and an identical seeded `Math.random`, then compares 17 fields of
   driving state every frame. The requirement is **exact** equality, not
   approximate. Run it after any edit near the sim block.
+- Parity survives the game layer because of two rules. **One:** nothing in the
+  game layer runs inside `update()`; `gameTick()` is called straight after it
+  from the same fixed-step loop. **Two:** level loading and the game layer only
+  ever use their own seeded generators, never `Math.random`, so they cannot
+  shift the shared stream the oncoming car draws its personality from. The one
+  place the game writes back into the driving model is `payloadStep()`, and
+  with an empty bus that correction is exactly zero.
 - All render-only state (particles, skid marks, eased zoom) lives in
   `render(rdt)` and is driven by the frame delta, never by `update()`. Keep it
   that way — the harness asserts that 400 `render()` calls move nothing.
@@ -176,10 +195,46 @@ and 631–721) and replaces only the renderer, so the two cannot drift:
   `buildBlocks()` pushes each block out until no point of its inner face is
   inside the corridor — the harness sweeps the whole street for intrusions.
 
+## bus-4k.html — the shift layer
+
+Everything under the `GAME` banner, between the simulation and the renderer.
+It follows the research doc closely; the section numbers in the comments refer
+to `docs/bus-game-research.md`.
+
+- **`LEVELS[]`** is the whole of the authored content: `nodes` (centreline +
+  half-widths), `parked`, `bins`, `stops` and `par`. `loadLevel(i)` refills
+  `NODES`, then re-runs `buildPath` / `buildNormals` / `buildProps` /
+  `buildBlocks`. Adding a route is adding an entry — but run the harness after,
+  because it sweeps the new geometry for buildings in the road, checks the bus
+  fits the whole way down, and **drives the route end to end** to prove it can
+  be finished.
+- **`G`** is the single game-state object: `state` (`title`/`brief`/`play`/
+  `result`/`shift`), clock, score, multiplier, comfort, riders, the stop list
+  and the front-end hit rectangles.
+- **Stops and doors.** `dockAt(st)` scores the pose of the front door against
+  the kerb — distance along, gap to the kerb (weighted heaviest), and skew.
+  The *gate* is generous (`DOCK_GAP`) and the *quality* is steep (`DOCK_REF`),
+  so being able to stop at all is never the wall; how well you stopped is the
+  score. Boarding time runs 0.9 s to 3.2 s off that quality.
+- **Mass** is `payloadStep()`: a post-`update()` correction that gives back a
+  slice of the accel/brake/drag deltas in proportion to the load. Written this
+  way so the shared simulation block never has to change.
+- **Comfort** is a multiplier, never a health bar (the research is emphatic:
+  the moment it can end a run you have built a bus simulator). `HOLD ON`
+  zeroes the penalty for 2.2 s and costs 3 s of clock.
+- **Damage** costs score per contact but charges the clock at most once every
+  0.8 s, so grinding a wall is expensive rather than instantly fatal.
+- New colour keys added here: `z` `S` (waiting passengers), `W` (stop sign),
+  `E` `Y` (the skip). As always they must be in **both** `KEY_TONE` and `GBC`.
+
 ## Verifying changes
 
 `node tools/test-bus.js <file>` runs the shared harness (sections 1–9) plus a
-variant section chosen from `consts.VARIANT`. It stubs document/canvas/
+variant section chosen from `consts.VARIANT`. For `bus-4k` that adds sections
+10–17, which cover the HD renderer *and* the shift: the geometry audit per
+route, a scripted driver that completes both routes, the mass/comfort/doors/
+damage rules, the front-end state machine, and a magenta sweep over every
+screen in every palette. It stubs document/canvas/
 localStorage/rAF and drives the loop through `window.__busHook`. A `fillStyle`
 /`strokeStyle` setter flags `#ff00ff`, catching any colour key missing from
 `KEY_TONE`/`GBC`; `bus-4k` also asserts the two maps are exact mirrors.
@@ -187,7 +242,11 @@ localStorage/rAF and drives the loop through `window.__busHook`. A `fillStyle`
 **A real browser IS available** in Claude Code on the web: Chromium lives at
 `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`. Use
 `node tools/shot-bus.js <game.html> <out.png> 1280x720 s=126 q=1.4 v=6.5` to
-screenshot any point on the street, then read the PNG. Two gotchas: headless
+screenshot any point on the street, then read the PNG. For `bus-4k` it also
+takes `lvl`, `state`, `stop`, `riders`, `board` and `win`, so any screen of the
+shift can be framed. To inspect fine detail, copy the file to a temp dir with
+`VIEW_X_M`/`VIEW_Y_M` reduced — the framing is world-fixed, so that is the only
+way to magnify. Two gotchas: headless
 clamps the window to a **500 px minimum width** (so a 390 px phone must be
 approximated by a matching aspect like 500×1082), and `--window-size` sets the
 *window*, not the viewport — 1280×720 yields a 1280×633 viewport, which puts a

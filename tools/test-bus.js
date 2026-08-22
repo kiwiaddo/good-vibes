@@ -661,18 +661,22 @@ if(K.VARIANT === "4k"){
   }
 
   const G = hook.game, LV = hook.levels;
-  ok("two routes are authored", LV.length === 2, LV.map(l=>l.name).join(" / "));
+  const RT = hook.routes ? hook.routes() : LV.map((_,i)=>i);
+  ok("two routes are playable", RT.length === 2, RT.map(i=>LV[i].name).join(" / "));
 
-  // Level 1 must be the gate-test street, or the parity claim is hollow.
-  ok("route 1 is the prototype street", LV[0].nodes.length === 10 &&
-     LV[0].nodes[4].hw === 3.3 && LV[0].parked.length === 6);
+  // LEVELS[0] is the gate-test street and stays the boot level, or the parity
+  // claim is hollow: it is what keeps the shared PRNG draw order identical.
+  ok("the reference street is still the prototype's", LV[0].hidden === true &&
+     LV[0].nodes.length === 10 && LV[0].nodes[4].hw === 3.3 && LV[0].parked.length === 6);
+  ok("and it is not offered as a route", RT.indexOf(0) === -1);
 
   // Geometry audit, per route: reachable docks, no buildings in the road, and
   // at least one pinch tight enough to be the point of the level.
-  for(let i=0;i<LV.length;i++){
+  for(let r=0;r<RT.length;r++){
+    const i = RT[r];
     hook.loadLevel(i); hook.reset(); hook.buildWaiters();
     const T = hook.totalS(), BW = K.BUS_W;
-    ok("route " + (i+1) + " builds a street", T > 200 && T < 400, T.toFixed(0) + " m");
+    ok("route " + (r+1) + " builds a street", T > 420 && T < 800, T.toFixed(0) + " m");
 
     let intr = 0;
     for(const B of hook.blocks()){
@@ -683,7 +687,7 @@ if(K.VARIANT === "4k"){
         if(Math.abs(pr.q) < pr.hw - 0.01 && pr.s > 0.5 && pr.s < T-0.5) intr++;
       }
     }
-    ok("route " + (i+1) + ": no building in the corridor", intr === 0, hook.blocks().length + " blocks");
+    ok("route " + (r+1) + ": no building in the corridor", intr === 0, hook.blocks().length + " blocks");
 
     // The bus has to physically fit the whole way down, and it has to be
     // tight somewhere or there is no game.
@@ -694,9 +698,9 @@ if(K.VARIANT === "4k"){
       if(road < minRoad){ minRoad = road; minRoadS = s; }
       if(fi.w < minWall) minWall = fi.w;
     }
-    ok("route " + (i+1) + ": the bus fits everywhere", minWall > BW + 0.35,
+    ok("route " + (r+1) + ": the bus fits everywhere", minWall > BW + 0.35,
        "narrowest to the building line " + minWall.toFixed(2) + " m");
-    ok("route " + (i+1) + ": it is genuinely tight somewhere", minRoad < BW + 0.45,
+    ok("route " + (r+1) + ": it is genuinely tight somewhere", minRoad < BW + 0.45,
        "kerb to kerb " + minRoad.toFixed(2) + " m at s=" + minRoadS.toFixed(0));
 
     // Every stop must be dockable, and every one but the deliberately blocked
@@ -708,33 +712,58 @@ if(K.VARIANT === "4k"){
       if(!d.ok) bad.push(st.name);
       else if(d.q < 0.70) poor.push(st.name + " " + d.q.toFixed(2));
     }
-    ok("route " + (i+1) + ": every stop can be docked", bad.length === 0, bad.join(",") || G.stops.length + " stops");
-    ok("route " + (i+1) + ": clean docks are available", poor.length === 0, poor.join(","));
+    ok("route " + (r+1) + ": every stop can be docked", bad.length === 0, bad.join(",") || G.stops.length + " stops");
+    ok("route " + (r+1) + ": clean docks are available", poor.length === 0, poor.join(","));
   }
 
   // ---- drive both routes end to end ----
   const drive = makeDriver(hook);
   const runs = [];
-  for(let i=0;i<LV.length;i++){
+  for(let r=0;r<RT.length;r++){
+    const i = RT[r];
     hook.startLevel(i);
     let f = 0;
-    const budget = 60*(LV[i].par + 240);
-    while(hook.game.state === "play" && f < budget){ drive(); hook.play(1); f++; }
+    const budget = 60*(LV[i].par + 420);
+    // BUS_TRACE=1 reports where the scripted driver loses time or paint, which
+    // is how a new route's geometry gets tuned.
+    const trace = !!process.env.BUS_TRACE, hitAt = {};
+    let lastHits = hook.hits(), lastS = -1, stallS = -1, stallF = 0;
+    while(hook.game.state === "play" && f < budget){
+      drive(); hook.play(1); f++;
+      if(trace){
+        const bs = hook.busS().s, hh = hook.hits();
+        if(hh > lastHits){ const k = Math.round(bs/10)*10; hitAt[k] = (hitAt[k]||0) + (hh-lastHits); lastHits = hh; }
+        if(Math.abs(bs-lastS) < 0.02){ if(stallF++ === 0) stallS = bs; }
+        else { if(stallF > 180) console.log("      stalled " + (stallF/60).toFixed(0) + "s at s=" + stallS.toFixed(0) +
+                 "m  car=" + hook.car.mode + "@" + hook.car.s.toFixed(0) + " q=" + hook.car.q.toFixed(1) +
+                 "  busq=" + hook.busS().q.toFixed(2)); stallF = 0; }
+        lastS = bs;
+        if(f % 1800 === 0) console.log("      t=" + (f/60).toFixed(0) + "s s=" + bs.toFixed(0) +
+          "m next=" + (hook.nextStop() ? hook.nextStop().name : "-") + " clock=" + hook.game.clock.toFixed(0));
+      }
+    }
+    if(trace){
+      if(stallF > 180) console.log("      stalled " + (stallF/60).toFixed(0) + "s at s=" + stallS.toFixed(0) +
+        "m  car=" + hook.car.mode + "@" + hook.car.s.toFixed(0) + " q=" + hook.car.q.toFixed(1) +
+        "  busq=" + hook.busS().q.toFixed(2));
+      const ks = Object.keys(hitAt).sort((a,b)=>a-b);
+      if(ks.length) console.log("      paint lost at: " + ks.map(k=>k+"m x"+hitAt[k]).join("  "));
+    }
     const R = hook.game.result || {};
     runs.push({ i, f, R, hits:hook.hits() });
-    ok("route " + (i+1) + " " + LV[i].name + " can be driven to the terminus",
+    ok("route " + (r+1) + " " + LV[i].name + " can be driven to the terminus",
        hook.game.state === "result" && R.win === true && R.served === R.total,
        (R.served||0) + "/" + (R.total||0) + " stops in " + (f/60).toFixed(0) + "s, " +
        (R.left||0) + "s spare, " + hook.hits() + " hits");
-    ok("route " + (i+1) + ": the whole manifest moved", (R.moved||0) > 0 && hook.game.riders === 0,
+    ok("route " + (r+1) + ": the whole manifest moved", (R.moved||0) > 0 && hook.game.riders === 0,
        (R.moved||0) + " passengers");
-    ok("route " + (i+1) + ": the clock left a margin", (R.left||0) >= 8 && (R.left||0) <= 90,
+    ok("route " + (r+1) + ": the clock left a margin", (R.left||0) >= 8 && (R.left||0) <= 90,
        (R.left||0) + "s of a " + LV[i].par + "s par");
-    ok("route " + (i+1) + ": scoring produced a score", (R.score||0) > 1000, "" + (R.score||0));
+    ok("route " + (r+1) + ": scoring produced a score", (R.score||0) > 1000, "" + (R.score||0));
   }
 
   section("15. HD: the rules the shift runs on");
-  hook.startLevel(0);
+  hook.startLevel(RT[0]);
   // Mass (S2.3): a full bus must take meaningfully longer to stop.
   function stopDist(riders){
     hook.startLevel(0);
@@ -850,7 +879,7 @@ if(K.VARIANT === "4k"){
 
   section("16. HD: the front end");
   // title -> brief -> play -> result -> brief -> play -> result -> shift -> title
-  hook.game.state = "title"; hook.game.pick = 0;
+  hook.game.state = "title"; hook.game.pick = RT[0];
   const seen = [];
   hook.advance(); seen.push(hook.game.state);              // brief, route 1
   hook.advance(); seen.push(hook.game.state);              // play
@@ -860,7 +889,7 @@ if(K.VARIANT === "4k"){
   ok("a lost route drops you straight back in", seen.join(">") === "brief>play>result>brief", seen.join(" > "));
 
   // Winning route 1 must hand you route 2, and winning route 2 the shift card.
-  hook.startLevel(0);
+  hook.startLevel(RT[0]);
   hook.game.next = hook.game.stops.length - 1;
   const term = hook.nextStop();
   hook.place(term.s - 4.4, hook.stopDoorQ(term), 0);
@@ -868,7 +897,7 @@ if(K.VARIANT === "4k"){
   for(let i=0;i<300 && hook.game.state === "play"; i++) hook.play(1);
   ok("reaching the terminus wins the route", hook.game.state === "result" && hook.game.result.win);
   hook.advance();
-  ok("winning route 1 offers route 2", hook.game.state === "brief" && hook.game.lvl === 1);
+  ok("winning route 1 offers route 2", hook.game.state === "brief" && hook.game.lvl === RT[1]);
   hook.advance();
   hook.game.next = hook.game.stops.length - 1;
   const term2 = hook.nextStop();
@@ -884,7 +913,7 @@ if(K.VARIANT === "4k"){
   const before17 = magenta;
   for(const p of ["color","green","gray"]){
     hook.setPal(p);
-    for(let i=0;i<LV.length;i++){
+    for(const i of RT){
       hook.startLevel(i);
       for(const s2 of ["title","brief","result","shift","play"]){
         hook.game.state = s2;

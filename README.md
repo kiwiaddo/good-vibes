@@ -109,9 +109,15 @@ it is open); **F** is fullscreen on desktop.
 
 ### Driving a shift (One Street HD)
 
-Two routes: **MILL LANE**, the street the physics were tuned on, and **MARKET
-HILL**, which is longer, tighter and has a skip in the first pinch. Pick one on
-the title card and tap again to pull away.
+Two routes. **MILL LANE** runs half a kilometre — an easy kerb to learn on, a
+double-parked van with 8 cm to spare, a dug-up carriageway you have to squeeze
+past, and a square to breathe in. **MARKET HILL** is 730 m, has a skip in the
+first pinch and again on a compound corner, a one-way you are going the wrong
+way down, and finishes on a 133° hairpin. Pick one on the title card and tap
+again to pull away.
+
+The stops are a good 130–190 m apart, so each leg is a proper run at something
+rather than a dock followed immediately by another dock.
 
 - **Dock at each stop.** Get the front door beside the kerb, stop, and the
   doors open themselves. The closer and straighter you park, the faster

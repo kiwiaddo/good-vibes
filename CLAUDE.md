@@ -17,7 +17,7 @@ play well on phones (touch controls, responsive, scroll/zoom suppressed).
 | `lemmings.html` | The **Lemmings game**, fully self-contained. Pixel-destructible terrain + the 8 classic skills, tuned for touch. |
 | `bus.html` | **ONE STREET** — the bus-driving gate test from `docs/bus-game-research.md` §15. 320×192, pixel-art. |
 | `bus-bendy.html`, `bus-chase.html`, `bus-shift.html` | Design variants of it: articulated bus / rotating camera / clock + stops. |
-| `bus-4k.html` | **ONE STREET HD** — the actual game. RIGID's driving model, a full-screen renderer, and two complete routes with stops, a manifest, a clock and a comfort multiplier. |
+| `bus-4k.html` | **ONE STREET HD** — the actual game. RIGID's driving model, a full-screen renderer, gesture controls, and two half-kilometre-plus routes with stops, a manifest, a clock and a comfort multiplier. |
 | `docs/bus-game-research.md` | Research behind the bus game. |
 | `tools/` | Headless harness, physics-parity check, screenshot tool, browser touch test. |
 | `.github/workflows/deploy-pages.yml` | Deploys the repo root to GitHub Pages. |
@@ -170,8 +170,12 @@ yields, backs into a bay, or waits for the horn.
 `bus-4k.html` **copies that simulation code verbatim** and replaces the
 renderer, so the two cannot drift. What it does *not* copy any more is the
 world **data**: the street, the parked cars and the bins were lifted out of the
-block into `LEVELS[]` and are refilled by `loadLevel()`. Level 1 is the
-gate-test street node for node, which is what keeps the parity claim true.
+block into `LEVELS[]` and are refilled by `loadLevel()`. **`LEVELS[0]` is the
+gate-test street node for node**, it is marked `hidden:true` so it never
+appears in a menu, and it is still the **boot** level — which is the whole
+trick: the PRNG draw order at boot (5 bins + 1 car) stays identical to
+`bus.html`, so `tools/parity-bus.js` needs no knowledge of levels at all. The
+playable routes are `LEVELS[1..]`, listed by `ROUTES`.
 
 - `tools/parity-bus.js` drives both files with an identical scripted input
   stream and an identical seeded `Math.random`, then compares 17 fields of
@@ -210,10 +214,22 @@ to `docs/bus-game-research.md`.
 - **`LEVELS[]`** is the whole of the authored content: `nodes` (centreline +
   half-widths), `parked`, `bins`, `stops` and `par`. `loadLevel(i)` refills
   `NODES`, then re-runs `buildPath` / `buildNormals` / `buildProps` /
-  `buildBlocks`. Adding a route is adding an entry — but run the harness after,
-  because it sweeps the new geometry for buildings in the road, checks the bus
-  fits the whole way down, and **drives the route end to end** to prove it can
-  be finished.
+  `buildBlocks`. Adding a route is adding an entry (and it lands in `ROUTES`
+  automatically unless it is `hidden`) — but run the harness after, because it
+  sweeps the new geometry for buildings in the road, checks the bus fits the
+  whole way down, and **drives the route end to end** to prove it can be
+  finished. `BUS_TRACE=1` makes that drive report where it stalls and where it
+  loses paint, which is how a new route gets tuned.
+- **Authoring a route — four rules paid for in debugging time:**
+  1. A kerb-side (`+q`) parked body must be **≥18 m** from a stop, or a 12 m
+     bus cannot pull back in.
+  2. A stop must be **≥15 m clear of a node kink**. Closer and the bus is still
+     skewed when it arrives, and its *nose* swings a further 0.6 m wide than
+     its centre — that is what made GUILDHALL unreachable.
+  3. A corner tighter than about 45° per node must be cut as a **real arc**
+     across several nodes. A 12 m bus tracks an arc and simply grinds a kink.
+  4. Nothing parked on the **inside** of a tight corner: that is where the tail
+     cuts. `+q` is left of the path, so a left-hand turn's inside is `+q`.
 - **`G`** is the single game-state object: `state` (`title`/`brief`/`play`/
   `result`/`shift`), clock, score, multiplier, comfort, riders, the stop list
   and the front-end hit rectangles.
@@ -232,6 +248,8 @@ to `docs/bus-game-research.md`.
   0.8 s, so grinding a wall is expensive rather than instantly fatal.
 - New colour keys added here: `z` `S` (waiting passengers), `W` (stop sign),
   `E` `Y` (the skip). As always they must be in **both** `KEY_TONE` and `GBC`.
+  The roadworks barrier (`t:"bar"`) deliberately adds none — it is drawn from
+  `h`/`l`/`k`/`K`, which already exist.
 
 ## bus-4k.html — the touch layer
 

@@ -394,11 +394,13 @@ function toWorld(s,q){ const p = pathPoint(s); return { x:p.x+p.nx*q, y:p.y+p.ny
 // ============================================================
 const CAR_L = 4.2, CAR_W = 1.8, VAN_L = 5.4, VAN_W = 2.1;
 const SKIP_L = 3.4, SKIP_W = 1.9;      // the recurring nemesis (research S5)
+const BAR_L  = 2.1, BAR_W  = 0.5;      // roadworks barrier (research S5 set-piece)
 // Every parked-body kind, so a level can name one instead of hard-coding sizes.
 const RIG_DIM = {
   car:  {l:CAR_L,  w:CAR_W},
   van:  {l:VAN_L,  w:VAN_W},
-  skip: {l:SKIP_L, w:SKIP_W}
+  skip: {l:SKIP_L, w:SKIP_W},
+  bar:  {l:BAR_L,  w:BAR_W}
 };
 let PARKED_SPEC = [], BIN_SPEC = [];   // refilled by loadLevel()
 
@@ -867,8 +869,14 @@ const HOLD_T    = 2.2, HOLD_COOL = 6.0, HOLD_COST = 3.0;
 // the physics were tuned against, and reusing it is what keeps the HD build
 // and the prototype the same vehicle.
 const LEVELS = [
+  // ---------------------------------------------------------------
+  // [0] THE GATE STREET -- research S15's test, node for node, and the world
+  // bus.html builds. Not playable: it is the boot level purely so the shared
+  // PRNG draw order matches the prototype and tools/parity-bus.js stays exact.
+  // ---------------------------------------------------------------
   {
-    name:"MILL LANE", route:"THE 41", sub:"MORNING SHIFT",
+    hidden:true,
+    name:"GATE STREET", route:"THE 41", sub:"REFERENCE",
     brief:"Three stops, one street, and a van parked like a threat. "+
           "Dock with the doors at the kerb, then thread the pinch with a full bus.",
     par:96,
@@ -900,63 +908,174 @@ const LEVELS = [
       {s:242, side:1, on:0, off:9, bonus:0,  name:"TERMINUS", terminus:true}
     ]
   },
+
+  // ---------------------------------------------------------------
+  // [1] MILL LANE -- 3 pickups and a terminus over half a kilometre, so every
+  // leg is a journey with its own set-piece instead of a dock-and-dock-again.
+  // ---------------------------------------------------------------
+  {
+    name:"MILL LANE", route:"THE 41", sub:"MORNING SHIFT",
+    brief:"Three stops down half a kilometre. A van parked like a threat, a "+
+          "dug-up carriageway, and a square to breathe in before the last run.",
+    par:196,
+    nodes:[
+      {x:0,   y:0,   hw:4.6},
+      {x:44,  y:0,   hw:4.6},   // straight opening: learn the dock
+      {x:78,  y:-9,  hw:4.2},
+      {x:114, y:-14, hw:4.0},
+      {x:146, y:-4,  hw:3.3},   // PINCH 1: the double-parked van
+      {x:172, y:8,   hw:3.5},
+      {x:204, y:14,  hw:4.2},   // release, and BREWERY YARD
+      {x:236, y:10,  hw:4.0},
+      {x:268, y:18,  hw:3.5},   // PINCH 2: the roadworks
+      {x:300, y:20,  hw:4.2},
+      {x:334, y:14,  hw:7.5},   // the square -- S5's vista after a hard bit
+      {x:368, y:20,  hw:4.4},
+      {x:402, y:12,  hw:4.2},
+      {x:436, y:18,  hw:4.0},
+      {x:466, y:10,  hw:3.9},
+      {x:486, y:6,   hw:4.6},
+      {x:504, y:6,   hw:7.2}    // turning head
+    ],
+    parked:[
+      {s:62,  q:2.7,  a:0.02,  t:"car"},
+      {s:88,  q:-2.5, a:-0.03, t:"car"},
+      {s:112, q:2.6,  a:0.0,   t:"car"},
+      {s:130, q:2.4,  a:0.03,  t:"car"},                 // narrows the squeeze-past
+      {s:146, q:-1.40,a:-0.05, t:"van", hazard:true},    // BADLY: double-parked
+      {s:170, q:2.5,  a:0.02,  t:"car"},
+      {s:232, q:-2.6, a:-0.02, t:"car"},
+      // the roadworks: a run of barriers biting into the carriageway
+      {s:258, q:0.55, a:0.0,   t:"bar"},
+      {s:260.4,q:0.55,a:0.0,   t:"bar"},
+      {s:262.8,q:0.55,a:0.0,   t:"bar"},
+      {s:265.2,q:0.55,a:0.0,   t:"bar"},
+      {s:267.6,q:0.55,a:0.0,   t:"bar"},
+      {s:270,  q:0.55,a:0.0,   t:"bar"},
+      {s:274,  q:2.5, a:0.04,  t:"van", hazard:true},    // the works van, at the kerb
+      {s:302,  q:-2.4,a:0.03,  t:"car"},
+      {s:420,  q:1.9, a:0.56,  t:"car", straddle:true},  // BADLY: 32 deg across two bays
+      {s:452,  q:-2.6,a:-0.02, t:"car"},
+      {s:462,  q:-2.5,a:0.01,  t:"car"}
+    ],
+    bins:[
+      {s:74,q:3.0},{s:76.2,q:3.05},{s:78.4,q:2.8},
+      {s:210,q:-2.8},{s:212.4,q:-2.95},
+      {s:330,q:3.6},{s:332.4,q:3.45},
+      {s:436,q:-2.9},{s:438.4,q:-3.0}
+    ],
+    stops:[
+      {s:30,  side:1, on:4, off:0, bonus:22, name:"MILL LANE",    note:"Easy kerb. Learn the dock."},
+      {s:196, side:1, on:4, off:1, bonus:24, name:"BREWERY YARD", note:"Load up. The road is dug up after this."},
+      {s:352, side:1, on:5, off:3, bonus:26, name:"MARKET SQUARE",note:"Wide open. Enjoy it."},
+      {s:496, side:1, on:0, off:9, bonus:0,  name:"TERMINUS", terminus:true}
+    ]
+  },
+
+  // ---------------------------------------------------------------
+  // [2] MARKET HILL -- longer again, and it ends on the tightest corner in the
+  // game. New set-pieces from S5: the one-way entered backwards, the hairpin.
+  // ---------------------------------------------------------------
   {
     name:"MARKET HILL", route:"THE 41", sub:"MARKET DAY",
     brief:"Longer, meaner, and the market is out. A skip in the first pinch, a "+
-          "compound corner in the second, and somebody has parked in a stop.",
-    par:145,
+          "compound corner, a one-way you are going the wrong way down, and a "+
+          "hairpin at the end with your name on it.",
+    par:170,
     nodes:[
       {x:0,   y:0,   hw:5.0},   // depot gate
-      {x:34,  y:0,   hw:4.6},
-      {x:62,  y:10,  hw:4.0},   // turn in to the market
-      {x:96,  y:14,  hw:3.7},   // the Shambles -- stalls both sides
-      {x:124, y:8,   hw:3.25},  // PINCH 1: the skip
-      {x:150, y:-2,  hw:3.5},
-      {x:178, y:-6,  hw:4.6},   // vista: the relief after the first pinch
-      {x:206, y:-2,  hw:3.8},   // compound corner, first clipping point
-      {x:226, y:8,   hw:3.3},   // PINCH 2, second clipping point
-      {x:252, y:12,  hw:3.7},   // and the reverse out of it
-      {x:280, y:10,  hw:4.4},
-      {x:304, y:18,  hw:4.8},
-      {x:328, y:22,  hw:7.0}    // terminus head
+      {x:36,  y:0,   hw:4.6},
+      {x:66,  y:11,  hw:4.1},   // turn in to the market
+      {x:100, y:16,  hw:3.8},   // the Shambles -- stalls both sides
+      {x:134, y:14,  hw:3.7},
+      {x:168, y:18,  hw:3.9},
+      {x:200, y:10,  hw:3.25},  // PINCH 1: the skip
+      {x:230, y:2,   hw:3.5},
+      {x:262, y:-4,  hw:4.6},   // vista: the relief after the first pinch
+      {x:296, y:-2,  hw:4.4},   // OLD BRIDGE
+      {x:328, y:6,   hw:3.8},   // compound corner, first clipping point
+      {x:352, y:20,  hw:3.3},   // PINCH 2, second clipping point
+      {x:380, y:30,  hw:3.6},   // and the reverse out of it
+      {x:414, y:34,  hw:4.2},
+      {x:448, y:28,  hw:4.6},
+      {x:482, y:32,  hw:4.8},   // GUILDHALL, and room to dock past the car in it
+      {x:516, y:26,  hw:3.4},   // the one-way, and you are facing the wrong way
+      {x:548, y:22,  hw:3.35},
+      {x:578, y:28,  hw:3.8},
+      // THE HAIRPIN: 133 degrees on a 26 m radius, cut as a real arc rather
+      // than a few coarse kinks, because a 12 m bus tracks an arc and simply
+      // grinds a corner. Its difficulty is the turn, not the width.
+      {x:596,   y:42,   hw:4.0},
+      {x:601.8, y:48.3, hw:4.1},
+      {x:605.2, y:56.2, hw:4.1},
+      {x:605.9, y:64.8, hw:4.1},
+      {x:603.8, y:73.1, hw:4.1},
+      {x:599.0, y:80.2, hw:4.1},
+      {x:592.2, y:85.5, hw:4.2},
+      {x:584.1, y:88.2, hw:4.4},
+      {x:556,   y:92,   hw:4.6},
+      {x:528,   y:94,   hw:6.8}    // terminus head
     ],
     parked:[
-      {s:18,  q:-2.6, a:-0.02, t:"car"},                 // far kerb: the first dock stays clean
-      {s:52,  q:3.0,  a:0.02,  t:"car"},
-      {s:58,  q:-2.3, a:-0.04, t:"car"},
-      {s:76,  q:2.45, a:0.01,  t:"van", hazard:true},    // market delivery, hazards on
-      {s:92,  q:-2.1, a:0.03,  t:"car"},
-      {s:110, q:2.25, a:0.60,  t:"car", straddle:true},  // straddling the market bays
-      {s:126, q:-1.41,a:-0.03, t:"skip"},                // NEMESIS, re-staged in the pinch
-      {s:138, q:2.6,  a:0.02,  t:"car"},                 // chicane out of the pinch, and
-                                                         // far enough back to leave the
-                                                         // OLD BRIDGE kerb clear
-      {s:174, q:-2.7, a:-0.02, t:"car"},
-      {s:196, q:-1.45,a:0.05,  t:"van", hazard:true},    // double-parked into the compound
-      {s:224, q:-1.15,a:-0.06, t:"skip"},                // NEMESIS again, on the apex
-      {s:262, q:2.15, a:0.01,  t:"car", inStop:true},    // parked IN the bus stop
-      {s:296, q:-2.6, a:0.03,  t:"car"}
+      {s:18,  q:-2.6, a:-0.02, t:"car"},                 // far kerb: first dock stays clean
+      {s:56,  q:3.0,  a:0.02,  t:"car"},
+      {s:62,  q:-2.3, a:-0.04, t:"car"},
+      {s:86,  q:2.45, a:0.01,  t:"van", hazard:true},    // market delivery, hazards on
+      {s:104, q:-2.1, a:0.03,  t:"car"},
+      {s:122, q:2.25, a:0.60,  t:"car", straddle:true},  // straddling the market bays
+      {s:186, q:2.5,  a:0.02,  t:"car"},
+      {s:202, q:-1.26,a:-0.03, t:"skip"},                // NEMESIS, re-staged in the pinch
+      {s:216, q:2.6,  a:0.02,  t:"car"},                 // chicane out of the pinch
+      {s:248, q:-2.7, a:-0.02, t:"car"},
+      {s:330, q:-1.45,a:0.05,  t:"van", hazard:true},    // double-parked into the compound
+      {s:358, q:-1.27,a:-0.06, t:"skip"},                // NEMESIS again, on the apex
+      {s:392, q:2.7,  a:0.02,  t:"car"},
+      {s:424, q:-2.6, a:0.03,  t:"car"},
+      {s:478, q:2.90, a:0.01,  t:"car", inStop:true},    // parked IN the bus stop: it
+                                                         // owns the kerb, so you board
+                                                         // from a metre and a half out
+      // the one-way: barriers holding the far side, so there is only one line
+      {s:512, q:-1.15, a:0.0,   t:"bar"},
+      {s:514.4,q:-1.15,a:0.0,   t:"bar"},
+      {s:516.8,q:-1.15,a:0.0,   t:"bar"},
+      {s:519.2,q:-1.15,a:0.0,   t:"bar"},
+      {s:548, q:2.5,  a:0.02,  t:"car"},
+      {s:576, q:-2.5, a:-0.02, t:"car"},
+      {s:590, q:-2.6, a:0.05,  t:"car"},                 // the far kerb, before the hairpin
+      {s:690, q:-2.8, a:0.02,  t:"car"}
     ],
     bins:[
-      {s:84,q:2.9},{s:86.4,q:3.0},{s:88.6,q:2.8},        // the market spills out
-      {s:96,q:-2.6},{s:98.4,q:-2.75},
-      {s:158,q:3.2},{s:160.6,q:3.05},
-      {s:286,q:-3.0},{s:288.4,q:-3.1},{s:290.6,q:-2.8}
+      {s:94,q:2.9},{s:96.4,q:3.0},{s:98.6,q:2.8},        // the market spills out
+      {s:106,q:-2.6},{s:108.4,q:-2.75},
+      {s:236,q:3.2},{s:238.6,q:3.05},
+      {s:286,q:-3.0},{s:288.4,q:-3.1},
+      {s:404,q:3.0},{s:406.4,q:3.1},
+      {s:534,q:2.4},{s:536.4,q:2.5},
+      {s:556,q:-2.6},{s:558.4,q:-2.7},
+      {s:668,q:2.9},{s:670.4,q:3.0},{s:672.6,q:2.7}
     ],
     stops:[
-      {s:28,  side:1, on:5, off:0, bonus:18, name:"DEPOT GATE",   note:"Wide, straight, forgiving. The last one that is."},
-      {s:96,  side:1, on:6, off:2, bonus:20, name:"THE SHAMBLES", note:"Bins, stalls, no room."},
-      {s:160, side:1, on:4, off:3, bonus:20, name:"OLD BRIDGE",   note:"Breathe. Then the compound corner."},
-      {s:266, side:1, on:5, off:3, bonus:22, name:"GUILDHALL",    note:"Somebody parked in it.", blocked:true},
-      {s:320, side:1, on:0, off:9, bonus:0,  name:"TERMINUS", terminus:true}
+      {s:30,  side:1, on:5, off:0, bonus:24, name:"DEPOT GATE",   note:"Wide, straight, forgiving. The last one that is."},
+      {s:160, side:1, on:6, off:2, bonus:28, name:"THE SHAMBLES", note:"Bins, stalls, no room."},
+      {s:300, side:1, on:4, off:3, bonus:28, name:"OLD BRIDGE",   note:"Breathe. Then the compound corner."},
+      {s:482, side:1, on:5, off:3, bonus:30, name:"GUILDHALL",    note:"Somebody parked in it.", blocked:true},
+      {s:700, side:1, on:0, off:9, bonus:0,  name:"TERMINUS", terminus:true}
     ]
   }
 ];
 
+// The playable routes. [0] is the reference street and never appears in a menu.
+const ROUTES = LEVELS.reduce((a,L,i)=> L.hidden ? a : a.concat(i), []);
+function routeOrd(lvl){ const k = ROUTES.indexOf(lvl); return k < 0 ? 0 : k; }
+function nextRoute(lvl){
+  const k = ROUTES.indexOf(lvl);
+  return k >= 0 && k < ROUTES.length-1 ? ROUTES[k+1] : -1;
+}
+
 // ---------- state ----------
 const G = {
   state:"title",          // title | brief | play | result | shift
-  lvl:0, pick:0,
+  lvl:0, pick:1,   // pick is a LEVELS index; ROUTES[0] is the first playable one
   clock:0, par:0, score:0, mult:1, chain:0,
   riders:0, moved:0, next:0,
   comfort:1,
@@ -1058,7 +1177,8 @@ function advance(){
   if(G.state === "title"){ beginShift(G.pick); return; }
   if(G.state === "brief"){ startLevel(G.lvl); return; }
   if(G.state === "result"){
-    if(G.result && G.result.win && G.lvl < LEVELS.length-1){ G.lvl++; G.state = "brief"; }
+    const nx = nextRoute(G.lvl);
+    if(G.result && G.result.win && nx >= 0){ G.lvl = nx; G.state = "brief"; }
     else if(G.result && G.result.win){ G.state = "shift"; }
     else { G.state = "brief"; }                 // out of time: straight back in
     return;
@@ -1071,9 +1191,10 @@ function endLevel(win){
   G.score += timeBonus;
   if(win){
     G.runScore += G.score;                        // only completed routes count
-    if(G.score > G.best[G.lvl]){
-      G.best[G.lvl] = G.score;
-      try{ localStorage.setItem("bus4k_best"+G.lvl, ""+G.score); }catch(e){}
+    const bi = routeOrd(G.lvl);
+    if(G.score > G.best[bi]){
+      G.best[bi] = G.score;
+      try{ localStorage.setItem("bus4k_best"+bi, ""+G.score); }catch(e){}
     }
   }
   G.result = { win, timeBonus, left, moved:G.moved, score:G.score,
@@ -2075,6 +2196,24 @@ function drawGhostHD(){
 // ---------- the skip: the recurring nemesis (S5) ----------
 // Not a vehicle -- an open steel box someone left in the road. Drawn without
 // wheels so it reads instantly as "this is not going to move for you".
+// A roadworks barrier: a striped plank on two feet. Drawn from keys that
+// already exist ('h' hazard, 'l' road paint, 'k'/'K' kerb), so it adds nothing
+// to KEY_TONE / GBC and the mirror check stays exact.
+function drawBarrier(o){
+  const sl = sunLocal(o.ang, 0.5);
+  inLocal(o.x, o.y, o.ang, ()=>{
+    ctx.fillStyle = shade(0.30);
+    rr(-o.hl + sl.a*0.5, -o.hw + sl.b*0.5, o.hl*2, o.hw*2, 0.06); ctx.fill();
+    fillKey(-o.hl, -o.hw*0.35, o.hl, o.hw*0.35, 'k', 0.03);          // the feet
+    fillKey(-o.hl, -o.hw, o.hl, o.hw, 'l', 0.05);                    // the plank
+    for(let i=0;i<5;i++){
+      const x0 = -o.hl + (i*2+0.35)*o.hl/5;
+      fillKey(x0, -o.hw, x0 + o.hl/5, o.hw, 'h', 0.04);              // hazard stripes
+    }
+    ctx.strokeStyle = col('K'); ctx.lineWidth = 0.05;
+    rr(-o.hl, -o.hw, o.hl*2, o.hw*2, 0.06); ctx.stroke();
+  });
+}
 function drawSkip(o){
   const sl = sunLocal(o.ang, 1.0);
   inLocal(o.x, o.y, o.ang, ()=>{
@@ -2554,8 +2693,8 @@ function drawCards(){
     label("A 12 METRE BUS. A STREET THAT DOES NOT WANT IT.",
           cx + cw/2, cy + U*7.0, 'X', U*0.66, "center", 700);
 
-    for(let i=0;i<LEVELS.length;i++){
-      const L = LEVELS[i];
+    for(let k=0;k<ROUTES.length;k++){
+      const i = ROUTES[k], L = LEVELS[i];
       const ry = cy + U*8.6 + i*U*3.3, rh = U*2.9;
       const on = G.pick === i;
       fillRR(cx + pad, ry, cx + cw - pad, ry + rh,
@@ -2568,8 +2707,8 @@ function drawCards(){
       label(L.name, cx + pad + U*2.2, ry + rh*0.36, 'x', U*1.0, "left", 800);
       label(L.route + "  ·  " + L.sub + "  ·  " + L.stops.length + " STOPS",
             cx + pad + U*2.2, ry + rh*0.72, 'X', U*0.6, "left", 700);
-      label(G.best[i] ? "BEST " + fmtNum(G.best[i]) : "NEW",
-            cx + cw - pad - U*0.8, ry + rh/2, G.best[i] ? 'e' : 'X', U*0.66, "right", 800);
+      label(G.best[k] ? "BEST " + fmtNum(G.best[k]) : "NEW",
+            cx + cw - pad - U*0.8, ry + rh/2, G.best[k] ? 'e' : 'X', U*0.66, "right", 800);
       cardHit(cx + pad, ry, cw - pad*2, rh, "pick" + i);
     }
     label("TAP A ROUTE, THEN TAP AGAIN TO DRIVE  ·  SPACE",
@@ -2584,7 +2723,7 @@ function drawCards(){
     const ch = U*(10.6 + lines.length*1.15 + L.stops.length*1.25);
     const cy = Math.max(U*1.2, (VH - ch)/2);
     panel(cx, cy, cw, ch, 16);
-    label("ROUTE " + (G.lvl+1) + " OF " + LEVELS.length, cx + pad, cy + U*1.9, 'h', U*0.66, "left", 800);
+    label("ROUTE " + (routeOrd(G.lvl)+1) + " OF " + ROUTES.length, cx + pad, cy + U*1.9, 'h', U*0.66, "left", 800);
     label("PAR " + fmtClock(L.par), cx + cw - pad, cy + U*1.9, 'X', U*0.66, "right", 800);
     label(L.name, cx + pad, cy + U*3.9, 'x', U*1.9, "left", 800);
     label(L.route + "  ·  " + L.sub, cx + pad, cy + U*5.5, 'X', U*0.66, "left", 700);
@@ -2627,24 +2766,24 @@ function drawCards(){
     ctx.beginPath(); ctx.moveTo(cx+pad, ry-U*0.5); ctx.lineTo(cx+cw-pad, ry-U*0.5); ctx.stroke();
     label("SCORE", cx + pad, ry + U*0.7, 'x', U*0.86, "left", 800);
     label(fmtNum(R.score), cx + cw - pad, ry + U*0.7, 'h', U*1.4, "right", 800);
-    label("BEST " + fmtNum(G.best[G.lvl]), cx + cw - pad, ry + U*2.1, 'X', U*0.62, "right", 700);
+    label("BEST " + fmtNum(G.best[routeOrd(G.lvl)]), cx + cw - pad, ry + U*2.1, 'X', U*0.62, "right", 700);
     const cta = !R.win ? "TAP TO RUN IT AGAIN"
-              : (G.lvl < LEVELS.length-1 ? "TAP FOR " + LEVELS[G.lvl+1].name : "TAP TO FINISH THE SHIFT");
+              : (nextRoute(G.lvl) >= 0 ? "TAP FOR " + LEVELS[nextRoute(G.lvl)].name : "TAP TO FINISH THE SHIFT");
     label(cta, cx + cw/2, cy + ch - U*1.3, 'h', U*0.72, "center", 800);
     cardHit(0, 0, VW, VH, "advance");
     return;
   }
 
   if(G.state === "shift"){
-    const ch = U*(9.5 + LEVELS.length*1.6);
+    const ch = U*(9.5 + ROUTES.length*1.6);
     const cy = Math.max(U*1.2, (VH - ch)/2);
     panel(cx, cy, cw, ch, 16);
     label("SHIFT COMPLETE", cx + cw/2, cy + U*2.8, 'e', U*1.9, "center", 800);
     label("BOTH ROUTES DRIVEN", cx + cw/2, cy + U*4.5, 'X', U*0.68, "center", 700);
     let ry = cy + U*6.6;
-    for(let i=0;i<LEVELS.length;i++){
-      label(LEVELS[i].name, cx + pad, ry, 'x', U*0.78, "left", 700);
-      label(fmtNum(G.best[i]), cx + cw - pad, ry, 'x', U*0.78, "right", 800);
+    for(let k=0;k<ROUTES.length;k++){
+      label(LEVELS[ROUTES[k]].name, cx + pad, ry, 'x', U*0.78, "left", 700);
+      label(fmtNum(G.best[k]), cx + cw - pad, ry, 'x', U*0.78, "right", 800);
       ry += U*1.6;
     }
     label("SHIFT TOTAL", cx + pad, ry + U*0.4, 'x', U*0.86, "left", 800);
@@ -2700,6 +2839,8 @@ function render(rdt){
   for(const o of obstacles){
     if(o.kind === "skip")
       drawSkip(o);
+    else if(o.kind === "bar")
+      drawBarrier(o);
     else if(o.kind === "van")
       drawRig(o.x,o.y,o.ang, VAN_L/2, VAN_W/2, 'v','V',
               { cabinFrom:0.30, cabinTo:1.55, blind:true, hazard:o.hazard && ((frameNo>>4)&1) });
@@ -3028,14 +3169,17 @@ const KEYMAP = {ArrowLeft:"left",ArrowRight:"right",ArrowUp:"up",ArrowDown:"down
 window.addEventListener("keydown",e=>{
   if(KEYMAP[e.key] && G.state === "play"){ input[KEYMAP[e.key]]=true; e.preventDefault(); hideHint(); wake(); }
   else if(KEYMAP[e.key] && G.state === "title" && (e.key==="ArrowUp"||e.key==="ArrowDown"||e.key==="w"||e.key==="s")){
-    G.pick = (G.pick + (e.key==="ArrowUp"||e.key==="w" ? LEVELS.length-1 : 1)) % LEVELS.length;
+    const k = (routeOrd(G.pick) + (e.key==="ArrowUp"||e.key==="w" ? ROUTES.length-1 : 1)) % ROUTES.length;
+    G.pick = ROUTES[k];
     loadLevel(G.pick); resetAll(); buildWaiters(); e.preventDefault();
   }
   if(e.key===" "||e.key==="Enter"){ if(!e.repeat) pressHorn(); e.preventDefault(); hideHint(); }
   if(e.key==="h"||e.key==="H") holdOn();
   if(e.key==="1"||e.key==="2"){
     const n = (+e.key)-1;
-    if(n < LEVELS.length && G.state !== "play"){ G.pick = n; loadLevel(n); resetAll(); buildWaiters(); }
+    if(n < ROUTES.length && G.state !== "play"){
+      G.pick = ROUTES[n]; loadLevel(G.pick); resetAll(); buildWaiters();
+    }
   }
   if(e.key==="r"||e.key==="R") restart();
   if(e.key==="f"||e.key==="F") toggleFull();
@@ -3203,7 +3347,7 @@ if(typeof window!=="undefined" && window.__busHook){
     honk:()=>{ input.hornEdge = true; },
     keys:()=>({ tone:KEY_TONE, gbc:GBC }),
     blocks:()=>BLOCKS, props:()=>PROPS,
-    game:G, levels:LEVELS, loadLevel, startLevel, advance, holdOn, restart,
+    game:G, levels:LEVELS, routes:()=>ROUTES.slice(), loadLevel, startLevel, advance, holdOn, restart,
     gameTick, nextStop, stopPost, stopDoorQ, dockAt, buildWaiters,
     // Physics + game together, which is what the real loop runs.
     play:n=>{ for(let i=0;i<(n||60);i++){ update(); gameTick(); } },

@@ -617,15 +617,20 @@ so the next person does not have to re-derive them from the source.
 | §4 fare colour-coding | The floating count over each stop is green ≥5 waiting, amber 3–4, red ≤2 |
 | §4 the navigation trick | The route ribbon follows the *road* to the stop, and turns white once you are within 26 m |
 | §4 see the next stops | The bottom card names the next stop and the one after it |
-| §5 measure in bus-widths | MILL LANE's worst pinch leaves 8 cm between the kerbs; MARKET HILL's leaves 6 cm, and its compound corner 12 cm |
-| §5 compound corners late | MARKET HILL only; MILL LANE has none |
+| §5 measure in bus-widths | MILL LANE's worst pinch leaves 8 cm between the kerbs and its roadworks 42 cm; MARKET HILL's first pinch leaves 6 cm, and its compound corner 12 cm |
+| §5 compound corners late | MARKET HILL only, and it now ends on a 133° hairpin cut as a 26 m arc — the tightest corner in the game |
 | §5 a recurring nemesis | The skip. Once in MARKET HILL's first pinch, again on the apex of the compound corner |
+| §5 set-pieces: roadworks | MILL LANE, a run of six barriers biting into the carriageway behind a works van |
+| §5 set-pieces: the square | MILL LANE, a wide pedestrianised opening straight after the roadworks — the doc's prescribed vista after a hard sequence |
+| §5 set-pieces: the one-way | MARKET HILL, a narrow barriered stretch you enter the wrong way. The geometry is authored; the confrontation still depends on where the one oncoming car happens to be |
+| §5 set-pieces: the hairpin | MARKET HILL's finale. The hill is still missing (§2.4), so it is the corner without the gradient |
+| §5 rhythm | Stops sit 130–190 m apart on both routes, so every leg is tight → release → tight instead of dock-and-dock-again |
 | §6 parked cars as jokes | Both routes ship the double-parked van and the straddler; MARKET HILL adds *the car parked in the bus stop*, which forces you to board from the middle of the road and caps that dock's grade |
 | §12 score | Fares × dock quality × multiplier, squeeze bonuses, a time bonus of 60/s, minus damage |
 | §12 combo | Breaks on a real collision, survives scrapes, steps to ×5 |
 | §12 instant restart | Losing a route drops you straight back on its briefing card |
 | §13 no hard fail | Damage costs 2 s and the combo. Only the clock ends a run |
-| §13 hand-authored | Both routes are node-by-node authored; procedural work is limited to street dressing and building blocks |
+| §13 hand-authored | Both routes are node-by-node authored — MILL LANE 515 m, MARKET HILL 731 m; procedural work is limited to street dressing and building blocks |
 | §16 hybrid route | Scheduled stops only, so far — see below |
 | §16 arcade-honest | Unchanged, and still proven frame-exact against the prototype |
 | §16 comfort as a multiplier | Drawn as a combo gauge under the score, never as a health bar |

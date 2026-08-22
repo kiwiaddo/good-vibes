@@ -12,7 +12,9 @@
 //         car (oncoming car's s), n (frames to settle), pal (color|green|gray).
 // bus-4k also takes: lvl (route), state (title|brief|play|result|shift),
 //         stop (index of the next stop), riders, board (force the doors open),
-//         win (result card outcome). Ignored by the builds without a shift.
+//         win (result card outcome), pad=<steer>,<speed> (plant the touch
+//         pads, each -1..1), menu=1 (open the settings sheet).
+//         Ignored by the builds without a shift.
 // NOTE: headless Chromium clamps the window to a 500 px minimum width, so a
 // 390 px phone cannot be shot directly -- use a matching aspect (e.g. 500x1082).
 const fs = require("fs");
@@ -58,6 +60,17 @@ setTimeout(function(){
   if(p.get("v"))  h.bus.v = +p.get("v");
   if(p.get("st")){ h.bus.steerNorm = +p.get("st"); h.bus.steer = h.bus.steerNorm * 0.55; }
   if(p.get("car")) h.car.s = +p.get("car");
+  // pad=<steer>,<speed> plants two thumbs so the drag indicators are on screen.
+  if(p.get("pad") && h.touch){
+    var pv = p.get("pad").split(","), t = h.touch.tuning;
+    window.dispatchEvent(new Event("touchstart"));   // render as a phone would
+    h.setCtrl("drag", true);
+    h.touch.down(1, 200, 420, 0, "L");
+    h.touch.move(1, 200 + (+pv[0]||0) * t.STEER_TRAVEL, 420);
+    h.touch.down(2, window.innerWidth - 200, 420, 900, "R");
+    h.touch.move(2, window.innerWidth - 200, 420 + (+pv[1]||0) * t.SPEED_TRAVEL);
+  }
+  if(p.get("menu") && h.openSet){ window.dispatchEvent(new Event("touchstart")); h.openSet(); }
   for(var i=0;i<(+(p.get("n")||10));i++) h.single();
 }, 400);
 </script></body>`);

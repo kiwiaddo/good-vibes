@@ -630,6 +630,22 @@ so the next person does not have to re-derive them from the source.
 | §16 arcade-honest | Unchanged, and still proven frame-exact against the prototype |
 | §16 comfort as a multiplier | Drawn as a combo gauge under the score, never as a health bar |
 | §16 landscape on mobile | Portrait rotates the *world* a quarter turn rather than cramping the framing |
+| §11 steering as a drag area | The left half of the glass is a drag area relative to touch-down x, feeding an analogue `input.axis`. No absolute wheel, and a 14 px commit threshold separates a drag from a tap |
+| §11 analogue steering | The drag writes a float, so a partial lock is genuinely holdable rather than a ramp between three positions |
+| §11 auto-throttle | The right half is a three-band speed pad whose null position holds a 9 m/s urban cruise. Drag down to brake and reverse, drag up to overrule |
+| §11 horn always visible | Kept as the one big button, under both schemes |
+| §11 offer both schemes | CONTROLS in the settings sheet switches DRAG ↔ the original D-pad, remembered in `localStorage` |
+| §11 no simultaneous two-thumb actions | Partly. Auto-throttle frees the right thumb entirely, but HOLD ON is a two-finger tap — see below |
+
+### Known tension
+
+**HOLD ON is a two-finger tap, and §11 says to avoid simultaneous two-thumb
+actions.** The false-positive half is solved: a tap only registers if both
+fingers land within 200 ms of an empty screen and lift within 300 ms without
+travelling 14 px, so the ordinary two-thumb driving posture can never trigger
+it. The ergonomic half is not: bracing mid-corner means lifting both thumbs and
+tapping, which auto-throttle makes survivable but not comfortable. Kept as a
+gesture on the strength of a clear call; the revert is a button above the horn.
 
 ### Deliberately not built yet
 

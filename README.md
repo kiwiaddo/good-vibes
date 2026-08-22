@@ -75,20 +75,37 @@ quarter turn in portrait so the street runs down the long axis), and two
 complete routes to drive. `bus-bendy`, `bus-chase` and `bus-shift` are design
 variants — an 18 m articulated bus, a rotating camera, and a shift clock.
 
-| Action | Touch | Keyboard |
+| Action | Keyboard | Touch (prototypes) |
 | --- | --- | --- |
-| Throttle / brake &amp; reverse | ▲ / ▼ | ↑ ↓ or W S |
-| Steer | ◀ / ▶ | ← → or A D |
-| Horn (makes a stubborn car move) | HORN | Space |
-| Hold on! (HD) | HOLD ON | H |
-| Continue a menu (HD) | tap anywhere | Space / Enter |
-| Restart the route | RESET chip | R |
-| Doors (`bus-shift` only) | DOORS | Shift or E |
+| Throttle / brake &amp; reverse | ↑ ↓ or W S | ▲ / ▼ |
+| Steer | ← → or A D | ◀ / ▶ |
+| Horn (makes a stubborn car move) | Space | HORN |
+| Hold on! (HD) | H | see below |
+| Continue a menu (HD) | Space / Enter | tap anywhere |
+| Restart the route | R | RESET, in the menu |
+| Doors (`bus-shift` only) | Shift or E | DOORS |
+
+**On a phone, One Street HD drives by gesture** — there is no D-pad, and the
+only buttons on the glass are the horn and a menu.
+
+| Action | Gesture |
+| --- | --- |
+| Steer | Drag anywhere on the **left half**. The wheel is relative to wherever your thumb landed, and it is analogue — half a drag is half a lock, and it holds |
+| Speed | Drag on the **right half**: down brakes (and reverses once you are stopped), up is full throttle |
+| Cruise | Let go. The bus holds about 32 km/h on its own, so your right thumb is free |
+| Horn | The **HORN** button |
+| Hold on! | **Two-finger tap** — both thumbs down and straight back up |
+
+Steering is vehicle-relative: dragging left turns the *wheel* left, which is
+what it does in portrait too, where the world is turned a quarter turn. The
+first few runs put a fading line on screen to say so. **CONTROLS** in the menu
+switches back to the original D-pad if you prefer it.
 
 The trail ahead of the bus is the **swept path** — where the tail will end up
 if you hold the current steering (dotted in `bus.html`, a ribbon in HD). Tail
-swing is the whole game, so it is shown rather than hidden. HD adds a **ZOOM**
-chip and, on desktop, **F** for fullscreen.
+swing is the whole game, so it is shown rather than hidden. HD keeps palette,
+zoom, swept path, sound and restart in the **☰ MENU** sheet (which pauses while
+it is open); **F** is fullscreen on desktop.
 
 ### Driving a shift (One Street HD)
 

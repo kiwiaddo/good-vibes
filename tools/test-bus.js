@@ -903,6 +903,166 @@ if(K.VARIANT === "4k"){
   hook.setPal("color");
   ok("no magenta anywhere in the shift", magenta === before17,
      magenta > before17 ? (magenta-before17) + " magenta fills" : "3 palettes x 2 routes x 5 screens");
+
+  // ------------------------------------------------------------------
+  section("18. HD: the touch layer");
+  const T = hook.touch.tuning;
+  const pads = () => hook.touch.pads();
+
+  // -- the analogue channel itself (research S11: partial lock must be holdable)
+  hook.setCtrl("pads");            // keep the governor out of these
+  hook.startLevel(0);
+  hook.input.axis = 0.5;
+  for(let i=0;i<180;i++) hook.play(1);
+  ok("an analogue axis holds a partial lock",
+     Math.abs(hook.bus.steerNorm - 0.5) < 0.02, "steerNorm " + hook.bus.steerNorm.toFixed(3));
+  hook.input.axis = 0;
+  for(let i=0;i<90;i++) hook.play(1);
+  ok("and releases back to centre", Math.abs(hook.bus.steerNorm) < 0.02);
+  hook.input.axis = 3;
+  for(let i=0;i<180;i++) hook.play(1);
+  ok("an out-of-range axis clamps to full lock", Math.abs(hook.bus.steerNorm - 1) < 0.02);
+  hook.input.axis = -1; hook.input.right = true;
+  for(let i=0;i<180;i++) hook.play(1);
+  ok("axis and buttons sum, then clamp", Math.abs(hook.bus.steerNorm) < 0.02);
+  hook.input.right = false; hook.input.axis = 0;
+  for(let i=0;i<90;i++) hook.play(1);
+
+  // -- the steering drag area, relative to touch-down x
+  hook.setCtrl("drag", true);
+  hook.startLevel(0);
+  hook.touch.cancel();
+  hook.touch.down(1, 500, 300, 0, "L");
+  ok("a drag inside the deadzone does not steer",
+     (hook.touch.move(1, 500 + T.STEER_DEAD - 1, 300), pads().steer === 0));
+  hook.touch.move(1, 500 + T.STEER_TRAVEL, 300);
+  ok("a full-travel drag is full lock", Math.abs(pads().steer - 1) < 1e-9);
+  hook.touch.move(1, 500 + T.STEER_TRAVEL*4, 300);
+  ok("and further does nothing more", Math.abs(pads().steer - 1) < 1e-9);
+  hook.touch.move(1, 500 - T.STEER_TRAVEL, 300);
+  ok("it mirrors to the left", Math.abs(pads().steer + 1) < 1e-9);
+  hook.touch.move(1, 500 + (T.STEER_TRAVEL+T.STEER_DEAD)/2, 300);
+  const mid = pads().steer;
+  ok("and is monotonic in between", mid > 0.30 && mid < 0.70, "steer " + mid.toFixed(2));
+  hook.touch.up(1, 400);
+  ok("lifting the thumb recentres", pads().steer === 0 && hook.touch.ptrs() === 0);
+
+  // -- the speed pad: three bands around an auto-throttle null
+  hook.touch.down(2, 900, 300, 0, "R");
+  ok("resting the thumb is cruise", pads().speed === "cruise");
+  hook.touch.move(2, 900, 300 - T.SPEED_TRAVEL);
+  ok("dragging up is full throttle", pads().speed === "go");
+  hook.touch.move(2, 900, 300 + T.SPEED_TRAVEL);
+  ok("dragging down is the brake", pads().speed === "brake");
+  hook.touch.up(2, 400);
+
+  // -- the governor, band by band
+  hook.game.state = "play"; hook.game.board = 0;
+  hook.bus.v = 0;    hook.touch.tick();
+  ok("hands off below cruise opens the throttle", hook.input.up && !hook.input.down);
+  hook.bus.v = 12;   hook.touch.tick();
+  ok("hands off above cruise checks it", hook.input.down && !hook.input.up);
+  hook.bus.v = T.CRUISE; hook.touch.tick();
+  ok("and holds at cruise", !hook.input.up && !hook.input.down);
+  hook.game.board = 1; hook.bus.v = 0; hook.touch.tick();
+  ok("auto-throttle is suppressed while the doors are open",
+     !hook.input.up && !hook.input.down);
+  hook.game.board = 0;
+  hook.setCtrl("pads");
+  hook.input.up = hook.input.down = false; hook.bus.v = 0; hook.touch.tick();
+  ok("and is off entirely under the D-pad scheme", !hook.input.up);
+
+  // -- it really does converge, driven through the whole loop
+  hook.setCtrl("drag", true);
+  hook.startLevel(0);
+  hook.setNoclip(true);
+  hook.place(20, 0, 0); hook.bus.v = 0;
+  hook.touch.cancel();
+  for(let i=0;i<900;i++) hook.drive(1);
+  ok("a hands-off bus settles at an urban cruise",
+     Math.abs(hook.bus.v - T.CRUISE) < 1.5, hook.bus.v.toFixed(2) + " m/s");
+  hook.setNoclip(false);
+
+  // -- no gesture, no demand
+  hook.touch.cancel(); hook.game.state = "play"; hook.touch.tick();
+  ok("no live gesture means no steering demand", hook.input.axis === 0);
+
+  // -- HOLD ON as a two-finger tap
+  hook.startLevel(0); hook.setCtrl("drag", true);
+  hook.touch.cancel(); hook.game.holdT = 0; hook.game.holdCool = 0;
+  hook.touch.down(10, 300, 400, 0, "L");
+  hook.touch.down(11, 900, 400, 60, "R");
+  hook.touch.up(10, 200); hook.touch.up(11, 220);
+  ok("a two-finger tap braces the passengers", hook.game.holdT > 0);
+
+  // The regression that matters: two thumbs down IS the driving posture.
+  hook.touch.cancel(); hook.game.holdT = 0; hook.game.holdCool = 0;
+  hook.touch.down(20, 300, 400, 0, "L");
+  hook.touch.move(20, 380, 400);
+  hook.touch.down(21, 900, 400, 500, "R");
+  hook.touch.up(21, 600); hook.touch.up(20, 620);
+  ok("the ordinary two-thumb posture never braces", hook.game.holdT === 0);
+
+  hook.touch.cancel(); hook.game.holdT = 0; hook.game.holdCool = 0;
+  hook.touch.down(30, 300, 400, 0, "L");
+  hook.touch.down(31, 900, 400, 50, "R");
+  hook.touch.move(30, 300 + T.TAP_SLOP + 6, 400);
+  hook.touch.up(30, 200); hook.touch.up(31, 210);
+  ok("a committed drag is never read as a tap", hook.game.holdT === 0);
+
+  hook.touch.cancel(); hook.game.holdT = 0; hook.game.holdCool = 0;
+  hook.touch.down(35, 300, 400, 0, "L");
+  hook.touch.down(36, 900, 400, 5000, "R");
+  hook.touch.up(35, 5100); hook.touch.up(36, 5120);
+  ok("two fingers landing far apart in time is not a tap", hook.game.holdT === 0);
+
+  hook.touch.cancel();
+  hook.touch.down(40, 300, 400, 0, "L");
+  hook.touch.down(41, 900, 400, 40, "R");
+  hook.touch.move(40, 300 + T.STEER_DEAD + 4, 400);
+  ok("a pending tap cannot yank the wheel", pads().steer === 0);
+  hook.touch.cancel();
+
+  // -- the settings pause, driven through the real loop body
+  hook.startLevel(0); hook.setCtrl("pads");
+  hook.input.up = true;
+  hook.loopStep(200);
+  ok("the loop runs when it is not paused", hook.bus.v > 0, hook.bus.v.toFixed(2) + " m/s");
+  hook.openSet();
+  ok("opening settings pauses", hook.isPaused() === true);
+  ok("and drops every held control", !hook.input.up && hook.input.axis === 0);
+  const rx1 = hook.bus.rx, clk1 = hook.game.clock;
+  for(let i=0;i<12;i++) hook.loopStep(200);
+  ok("a paused shift advances nothing",
+     hook.bus.rx === rx1 && hook.game.clock === clk1);
+  hook.closeSet();
+  ok("closing settings resumes", hook.isPaused() === false);
+  hook.input.up = true;
+  for(let i=0;i<4;i++) hook.loopStep(200);
+  ok("and the bus moves again", hook.bus.rx !== rx1);
+  hook.input.up = false;
+
+  // -- the scheme is remembered
+  hook.setCtrl("pads");
+  ok("the control scheme persists", store["bus4k_ctrl"] === "pads");
+  hook.setCtrl("drag", true);
+  ok("both ways", store["bus4k_ctrl"] === "drag");
+
+  // -- and the indicators draw clean in every palette
+  const before18 = magenta;
+  hook.startLevel(0);
+  hook.touch.cancel();
+  hook.touch.down(50, 300, 400, 0, "L");
+  hook.touch.down(51, 900, 400, 900, "R");
+  hook.touch.move(50, 360, 400); hook.touch.move(51, 900, 470);
+  for(const p of ["color","green","gray"]){
+    hook.setPal(p);
+    for(let k=0;k<30;k++) hook.render(1/60);
+  }
+  hook.setPal("color");
+  ok("the pad indicators draw clean in every palette", magenta === before18,
+     magenta > before18 ? (magenta-before18) + " magenta fills" : "3 palettes");
+  hook.touch.cancel();
 }
 
 // ------------------------------------------------------------------

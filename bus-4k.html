@@ -70,8 +70,16 @@
   .vchip.on{ color:#0a0c10; background:var(--amber); border-color:var(--amber); }
 
   /* ---- touch controls --------------------------------------------- */
+  /* Two invisible relative drag areas (research S11): the left thumb steers,
+     the right thumb is a three-band speed pad whose null position is cruise.
+     They sit first in #ui so every real button paints on top of them. */
+  #zones{ display:none; }
+  body.touch.drag #zones{ display:block; position:absolute; inset:0; }
+  #zones > div{ position:absolute; top:0; bottom:0; width:50%; touch-action:none; }
+  #zoneL{ left:0; } #zoneR{ right:0; }
+
   #pads{ display:none; }
-  body.touch #pads, body.forcepad #pads{
+  body.touch.pads #pads{
     display:block; position:absolute; inset:0; pointer-events:none;
   }
   #pads > *{ pointer-events:auto; }
@@ -103,18 +111,36 @@
     box-shadow:0 8px 22px rgba(0,0,0,.5), inset 0 2px 0 rgba(255,255,255,.35);
   }
   #horn:active{ transform:translateY(3px) scale(.97); }
-  #holdbtn{
-    position:absolute; right:calc(22px + env(safe-area-inset-right));
-    bottom:calc(58px + env(safe-area-inset-bottom) + clamp(92px, 26vmin, 144px));
-    padding:0 clamp(10px,3vmin,18px); height:clamp(42px,11vmin,58px); border-radius:12px;
-    background:rgba(22,27,34,.78); color:var(--ink);
-    border:1px solid rgba(160,175,195,.30);
-    font-size:clamp(11px,2.6vmin,14px); font-weight:800; letter-spacing:.12em;
-    display:flex; align-items:center; justify-content:center; cursor:pointer; touch-action:none;
-    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
-    box-shadow:0 6px 18px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.10);
+  /* The horn stays a big always-visible button under BOTH schemes (research
+     S11), but only on touch -- desktop already has the biggest key there is. */
+  #horn{ display:none; }
+  body.touch #horn{ display:flex; }
+  /* ---- settings sheet --------------------------------------------- */
+  /* Everything that is not the horn lives in here, so the glass stays clear
+     for the thumbs. Opening it pauses. */
+  #settings[hidden]{ display:none; }
+  #settings{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    background:rgba(6,8,12,.72); padding:var(--pad);
+    backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);
   }
-  #holdbtn:active{ background:rgba(120,140,170,.55); transform:translateY(2px); }
+  #sheet{
+    width:min(420px, 100%); max-height:100%; overflow:auto;
+    background:rgba(14,17,23,.94); border:1px solid var(--panelEdge);
+    border-radius:16px; padding:14px;
+    box-shadow:0 18px 50px rgba(0,0,0,.6);
+  }
+  .srow{
+    display:flex; align-items:center; gap:10px; padding:7px 2px;
+    border-bottom:1px solid rgba(160,175,195,.10);
+  }
+  .srow:last-of-type{ border-bottom:0; }
+  .slab{ flex:1 1 auto; font-size:11px; font-weight:700; letter-spacing:.10em; color:var(--dim); }
+  .srow .chip{ min-width:96px; text-align:center; }
+  #svars{ display:flex; gap:5px; flex-wrap:wrap; justify-content:center; padding-top:10px; }
+  #sfoot{ display:flex; gap:8px; align-items:center; padding-top:12px; }
+  #sfoot .grow{ flex:1 1 auto; }
+  #gear{ font-size:13px; letter-spacing:0; }
 
   #keyhint{
     position:absolute; left:50%; transform:translateX(-50%);
@@ -134,14 +160,12 @@
   <canvas id="game"></canvas>
 
   <div id="ui">
+    <div id="zones"><div id="zoneL"></div><div id="zoneR"></div></div>
+
     <div id="topbar">
       <a class="back" href="index.html">&#9664; ARCADE</a>
       <span class="grow"></span>
-      <button class="chip" id="palBtn">HD</button>
-      <button class="chip" id="zoomBtn">1.0&times;</button>
-      <button class="chip on" id="ghostBtn">GHOST</button>
-      <button class="chip" id="muteBtn">SOUND</button>
-      <button class="chip" id="resetBtn">RESET</button>
+      <button class="chip" id="gear">&#9776; MENU</button>
     </div>
 
     <div id="pads">
@@ -151,18 +175,33 @@
         <button class="btn" id="right">&#9654;</button>
         <button class="btn" id="down">&#9660;</button>
       </div>
-      <button class="btn" id="horn">HORN</button>
-      <button id="holdbtn">HOLD ON</button>
     </div>
+    <button class="btn" id="horn">HORN</button>
 
     <div id="keyhint">&#8593;&#8595; THROTTLE / BRAKE &middot; &#8592;&#8594; STEER &middot; SPACE HORN &middot; H HOLD ON &middot; R RESTART</div>
 
-    <div id="variants">
-      <a class="vchip on" href="bus-4k.html">HD</a>
-      <a class="vchip" href="bus.html">RIGID</a>
-      <a class="vchip" href="bus-bendy.html">BENDY</a>
-      <a class="vchip" href="bus-chase.html">CHASE</a>
-      <a class="vchip" href="bus-shift.html">SHIFT</a>
+    <div id="settings" hidden>
+      <div id="sheet">
+        <div class="srow"><span class="slab">CONTROLS</span><button class="chip" id="ctrlBtn">DRAG</button></div>
+        <div class="srow"><span class="slab">PALETTE</span><button class="chip" id="palBtn">HD</button></div>
+        <div class="srow"><span class="slab">ZOOM</span><button class="chip" id="zoomBtn">1.0&times;</button></div>
+        <div class="srow"><span class="slab">SWEPT PATH</span><button class="chip on" id="ghostBtn">GHOST</button></div>
+        <div class="srow"><span class="slab">SOUND</span><button class="chip" id="muteBtn">SOUND</button></div>
+        <div class="srow"><span class="slab">ROUTE</span><button class="chip" id="resetBtn">RESET</button></div>
+        <div class="srow"><span class="slab">DISPLAY</span><button class="chip" id="fullBtn">FULLSCREEN</button></div>
+        <div id="svars">
+          <a class="vchip on" href="bus-4k.html">HD</a>
+          <a class="vchip" href="bus.html">RIGID</a>
+          <a class="vchip" href="bus-bendy.html">BENDY</a>
+          <a class="vchip" href="bus-chase.html">CHASE</a>
+          <a class="vchip" href="bus-shift.html">SHIFT</a>
+        </div>
+        <div id="sfoot">
+          <a class="back" href="index.html">&#9664; ARCADE</a>
+          <span class="grow"></span>
+          <button class="chip" id="closeBtn">CLOSE</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -704,7 +743,7 @@ function sy(y){ return (y-camY)*PPM + H/2 + shakeY*shakeScale(); }
 // ============================================================
 // Update
 // ============================================================
-const input = { left:false, right:false, up:false, down:false, horn:false, hornEdge:false };
+const input = { left:false, right:false, up:false, down:false, horn:false, hornEdge:false, axis:0 };
 let timeScale = 1, showGhost = true, frameNo = 0;
 let noClip = false;   // test-only: skip collision resolution
 
@@ -716,9 +755,13 @@ function update(){
 
   // Steering ramps to lock over ~250 ms and self-centres faster, so a
   // partial lock is holdable. Binary steer would ruin the precision fantasy.
-  let want = 0;
+  // input.axis is the analogue channel a touch drag writes to. It is 0 unless a
+  // drag is live, so the keyboard, the variants and the parity harness are all
+  // exactly as they were.
+  let want = input.axis || 0;
   if(input.left) want -= 1;
   if(input.right) want += 1;
+  if(want > 1) want = 1; else if(want < -1) want = -1;
   const rate = want === 0 ? dt/0.18 : dt/0.25;
   const diff = want - bus.steerNorm;
   bus.steerNorm += Math.max(-rate, Math.min(rate, diff));
@@ -919,7 +962,7 @@ const G = {
   comfort:1,
   holdT:0, holdCool:0, brace:0,
   doorT:0, board:0, boardLen:0, boardQ:0, boardOn:0, boardOff:0,
-  msg:"", msgT:0, msgKey:'x',
+  msg:"", msgT:0, msgKey:'x', hint2:0,
   pop:[],                 // floating score pops: {s, x, y, t}
   hits:[],                // tappable rectangles on the front-end cards
   sqArmed:true,           // one squeeze bonus per squeeze, not per frame
@@ -1002,9 +1045,10 @@ function startLevel(i){
   G.holdT = 0; G.holdCool = 0; G.brace = 0;
   G.doorT = 0; G.board = 0; G.boardLen = 0; G.alight.length = 0;
   G.lastHits = hitCount; G.prevV = bus.v; G.prevH = bus.h; G.hitCool = 0;
-  G.score = 0; G.pop.length = 0; G.msgT = 0; G.tick = 0;
+  G.score = 0; G.pop.length = 0; G.msgT = 0; G.tick = 0; G.hint2 = 0;
   buildWaiters();
   G.state = "play";
+  routeHint();
 }
 function beginShift(i){ G.runScore = 0; G.pick = i; G.lvl = i; G.state = "brief"; }
 
@@ -1278,6 +1322,10 @@ function gameTick(){
 
   for(let i=G.pop.length-1;i>=0;i--){ G.pop[i].t -= 1/60; if(G.pop[i].t<=0) G.pop.splice(i,1); }
   if(G.msgT > 0) G.msgT -= 1/60;
+  if(G.hint2 > 0){
+    G.hint2 -= 1/60;
+    if(G.hint2 <= 0) say("TWO-FINGER TAP  \u00b7  HOLD ON", 'w', 3.0);
+  }
 }
 
 // ============================================================
@@ -2439,9 +2487,12 @@ function drawGameHUD(){
   // Bottom card: the next stop, or the boarding progress while docked.
   const st = nextStop();
   if(st){
-    const cw = Math.min(VW - 24, Math.max(300, U*26)), cxx = (VW - cw)/2;
-    // Clear of the keyboard hint and the variant strip along the bottom edge.
-    const ch = U*3.2, cyy = VH - ch - Math.max(U*3.4, 88);
+    // The horn owns the bottom-right corner on touch, so the card is centred in
+    // what is left rather than in the screen. The variant strip that used to sit
+    // under it has moved into the settings sheet, so it can drop closer to the edge.
+    const keep = touchOn ? Math.min(VW*0.34, 150) : 0;
+    const cw = Math.min(VW - 24 - keep, Math.max(300, U*26)), cxx = (VW - keep - cw)/2;
+    const ch = U*3.2, cyy = VH - ch - (touchOn ? Math.max(U*2.2, 30) : Math.max(U*3.4, 88));
     panel(cxx, cyy, cw, ch, 12);
     if(G.board > 0){
       const f = 1 - G.board/Math.max(0.01, G.boardLen);
@@ -2677,7 +2728,45 @@ function render(rdt){
 
   drawVignette();
   if(G.state === "play"){ drawHUDHD(); drawGameHUD(); }
+  drawPads(rdt);
   drawCards();
+}
+
+// An invisible pad you cannot see is an invisible pad you cannot learn, so both
+// draw themselves under the thumb while it is down and fade out when it lifts.
+// Render-only state, eased on the frame delta, exactly like the zoom.
+let padGlow = 0;
+function drawPads(rdt){
+  const live = ctrlMode === "drag" && touchOn && G.state === "play" && PTR.size > 0;
+  padGlow += ((live?1:0) - padGlow) * Math.min(1, rdt*10);
+  if(padGlow < 0.02 || PTR.size === 0) return;
+  ctx.save();
+  ctx.globalAlpha = padGlow;
+  for(const p of PTR.values()){
+    if(p.zone === "L"){
+      const x = p.x0, y = p.y0, halfW = STEER_TRAVEL + 10;
+      rr(x-halfW, y-13, halfW*2, 26, 13);
+      ctx.fillStyle = "rgba(10,12,16,0.55)"; ctx.fill();
+      ctx.strokeStyle = "rgba(160,175,195,0.22)"; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = "rgba(160,175,195,0.35)"; ctx.fillRect(x-1, y-7, 2, 14);
+      ctx.fillStyle = "rgba(255,181,36,0.92)";
+      ctx.beginPath(); ctx.arc(x + steerPad*STEER_TRAVEL, y, 11, 0, Math.PI*2); ctx.fill();
+    } else if(p.zone === "R"){
+      const x = p.x0, y = p.y0, halfH = SPEED_TRAVEL + 14;
+      rr(x-15, y-halfH, 30, halfH*2, 15);
+      ctx.fillStyle = "rgba(10,12,16,0.55)"; ctx.fill();
+      ctx.strokeStyle = "rgba(160,175,195,0.22)"; ctx.lineWidth = 1; ctx.stroke();
+      // The cruise band is drawn, so the null position reads as a real gear.
+      ctx.fillStyle = "rgba(160,175,195,0.16)";
+      ctx.fillRect(x-13, y-SPEED_TRAVEL*SPEED_DEAD, 26, SPEED_TRAVEL*SPEED_DEAD*2);
+      const dy = Math.max(-1, Math.min(1, (p.y-p.y0)/SPEED_TRAVEL));
+      ctx.fillStyle = speedPad === "brake" ? "rgba(255,92,92,0.92)"
+                    : speedPad === "go"    ? "rgba(120,230,140,0.92)"
+                                           : "rgba(255,181,36,0.92)";
+      ctx.beginPath(); ctx.arc(x, y + dy*SPEED_TRAVEL, 12, 0, Math.PI*2); ctx.fill();
+    }
+  }
+  ctx.restore();
 }
 
 // ============================================================
@@ -2737,7 +2826,8 @@ function sTick(){ beep(1500,0.035,"square",0.028); }
 // Input
 // ============================================================
 const body = document.body;
-function markTouch(){ if(body && body.classList) body.classList.add("touch"); }
+let touchOn = false;
+function markTouch(){ touchOn = true; if(body && body.classList) body.classList.add("touch"); }
 window.addEventListener("touchstart", markTouch, {passive:true});
 
 function bindHold(id,key){
@@ -2754,14 +2844,11 @@ function pressHorn(){
   if(G.state !== "play"){ advance(); return; }
   if(!input.horn){ input.horn=true; input.hornEdge=true; }
 }
-const holdBtn = document.getElementById("holdbtn");
-if(holdBtn) holdBtn.addEventListener("pointerdown",e=>{ e.preventDefault(); audioInit(); wake(); holdOn(); });
-// Tapping the canvas drives the front end; the cards record their own rects.
-canvas.addEventListener("pointerdown", e=>{
-  audioInit(); wake();
-  if(G.state === "play") return;
+// Tapping the front end drives it; the cards record their own rects. Both the
+// canvas and the drag zones route here, so the menus work under either scheme.
+function frontEndTap(cx, cy){
   const r = canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : {left:0,top:0};
-  const x = e.clientX - r.left, y = e.clientY - r.top;
+  const x = cx - r.left, y = cy - r.top;
   for(let i=G.hits.length-1;i>=0;i--){
     const h = G.hits[i];
     if(x < h.x || x > h.x+h.w || y < h.y || y > h.y+h.h) continue;
@@ -2772,6 +2859,11 @@ canvas.addEventListener("pointerdown", e=>{
     return;
   }
   advance();
+}
+canvas.addEventListener("pointerdown", e=>{
+  audioInit(); wake();
+  if(G.state === "play") return;
+  frontEndTap(e.clientX, e.clientY);
 });
 function restart(){
   if(G.state === "play") startLevel(G.lvl);
@@ -2783,6 +2875,154 @@ if(hornBtn){
   hornBtn.addEventListener("pointerup",e=>{ e.preventDefault(); input.horn=false; });
   hornBtn.addEventListener("pointerleave",e=>{ input.horn=false; });
 }
+
+// ============================================================
+// Touch: two relative drag pads (research S11)
+// ============================================================
+// Steering is a drag area relative to touch-down x -- never an absolute wheel --
+// and it writes the analogue input.axis rather than the boolean flags, because
+// S11 is emphatic that a bus needs a holdable partial lock. The right pad is a
+// three-band speed control whose null position is auto-throttle, so the hand can
+// leave the glass entirely and the bus still rolls. That is what buys us a free
+// thumb, which is the whole point of S11's "avoid simultaneous two-thumb actions".
+//
+// None of this runs inside update(). touchTick() is called from the same fixed
+// step immediately before it, exactly like gameTick() is called after, so the
+// shared simulation block is untouched and parity holds.
+const STEER_TRAVEL = 96;    // CSS px from touch-down to full lock
+const STEER_DEAD   = 8;     // snaps to exactly 0, so update() self-centres fast
+const SPEED_TRAVEL = 90;
+const SPEED_DEAD   = 0.25;  // fraction of travel that still counts as cruise
+const CRUISE       = 9.0;   // m/s, about 32 km/h -- an urban bus, not a coach
+const TAP_SLOP     = 14;    // S11's commit threshold: past this you are driving
+const TAP_PAIR     = 200;   // ms between the two fingers landing
+const TAP_HOLD     = 300;   // ms the pair may stay down and still be a tap
+
+let ctrlMode = "drag";
+const PTR = new Map();      // pointerId -> {zone, x0, y0, x, y}
+const TAP = { ids:[], t0:0, t1:0, armed:false, moved:false, up:0 };
+let steerPad = 0;           // -1..1, the analogue steering demand
+let speedPad = "cruise";    // "go" | "cruise" | "brake"
+
+function tapReset(){ TAP.ids.length = 0; TAP.armed = false; TAP.moved = false; TAP.up = 0; }
+
+// A two-finger tap only counts from a standing start. If a pointer was already
+// down this is the ordinary two-thumb driving posture, not a gesture -- which is
+// what stops HOLD ON firing every time the second thumb lands.
+function tDown(id, x, y, t, zone){
+  const first = PTR.size === 0;
+  PTR.set(id, {zone, x0:x, y0:y, x, y});
+  if(first){ tapReset(); TAP.ids.push(id); TAP.t0 = t; TAP.armed = true; }
+  else if(TAP.armed && TAP.ids.length === 1 && t - TAP.t0 <= TAP_PAIR){ TAP.ids.push(id); TAP.t1 = t; }
+  else TAP.armed = false;
+  applyPads();
+}
+function tMove(id, x, y){
+  const p = PTR.get(id); if(!p) return;
+  p.x = x; p.y = y;
+  if(Math.abs(x-p.x0) > TAP_SLOP || Math.abs(y-p.y0) > TAP_SLOP) TAP.moved = true;
+  applyPads();
+}
+function tUp(id, t){
+  if(!PTR.has(id)) return;
+  PTR.delete(id);
+  if(TAP.armed && TAP.ids.indexOf(id) >= 0){
+    TAP.up++;
+    if(TAP.up === 2 && TAP.ids.length === 2 && !TAP.moved && t - TAP.t1 <= TAP_HOLD){
+      holdOn(); tapReset();
+    }
+  }
+  applyPads();
+}
+function tCancel(){ PTR.clear(); tapReset(); applyPads(); }
+
+// Resolve the live pointers into a steering demand and a speed band. While a
+// two-finger tap is still a candidate both are held at neutral, so bracing can
+// never yank the wheel.
+function applyPads(){
+  const pending = TAP.armed && TAP.ids.length === 2 && !TAP.moved;
+  let steer = 0, mode = "cruise";
+  if(!pending){
+    for(const p of PTR.values()){
+      if(p.zone === "L"){
+        const dx = p.x - p.x0, ax = Math.abs(dx);
+        steer = ax <= STEER_DEAD ? 0
+              : Math.max(-1, Math.min(1, (dx - (dx<0?-STEER_DEAD:STEER_DEAD)) / (STEER_TRAVEL-STEER_DEAD)));
+      } else if(p.zone === "R"){
+        const dy = (p.y - p.y0) / SPEED_TRAVEL;
+        mode = dy < -SPEED_DEAD ? "go" : dy > SPEED_DEAD ? "brake" : "cruise";
+      }
+    }
+  }
+  steerPad = steer; speedPad = mode;
+}
+
+// Called once per fixed step, immediately before update().
+function touchTick(){
+  if(ctrlMode !== "drag" || !touchOn) return;
+  if(G.state !== "play"){ input.axis = 0; return; }
+  input.axis = steerPad;
+  if(speedPad === "go"){ input.up = true;  input.down = false; }
+  else if(speedPad === "brake"){ input.up = false; input.down = true; }
+  else if(G.board > 0){ input.up = false; input.down = false; }
+  else {
+    // Auto-throttle (S11): hands off and the bus holds an urban cruise. It only
+    // ever sets the same booleans a thumb would, so the driving model is intact.
+    input.up   = bus.v < CRUISE - 0.25;
+    input.down = bus.v > CRUISE + 1.0;
+  }
+}
+
+const zoneLEl = document.getElementById("zoneL");
+const zoneREl = document.getElementById("zoneR");
+function bindZone(el, zone){
+  if(!el || !el.addEventListener) return;
+  el.addEventListener("pointerdown", e=>{
+    e.preventDefault(); audioInit(); wake();
+    if(G.state !== "play"){ frontEndTap(e.clientX, e.clientY); return; }
+    if(el.setPointerCapture){ try{ el.setPointerCapture(e.pointerId); }catch(_){} }
+    tDown(e.pointerId, e.clientX, e.clientY, e.timeStamp || 0, zone);
+  });
+  el.addEventListener("pointermove", e=>{
+    if(!PTR.has(e.pointerId)) return;
+    e.preventDefault(); tMove(e.pointerId, e.clientX, e.clientY);
+  });
+  const up = e=>{ if(PTR.has(e.pointerId)) tUp(e.pointerId, e.timeStamp || 0); };
+  el.addEventListener("pointerup", up);
+  el.addEventListener("pointercancel", up);
+  el.addEventListener("lostpointercapture", up);
+}
+bindZone(zoneLEl, "L"); bindZone(zoneREl, "R");
+
+const ctrlBtn = document.getElementById("ctrlBtn");
+function setCtrl(mode, on){
+  ctrlMode = mode === "pads" ? "pads" : "drag";
+  if(on !== undefined) touchOn = !!on;
+  PTR.clear(); tapReset(); applyPads();
+  input.axis = 0; input.left = input.right = false;
+  if(body && body.classList){
+    body.classList.toggle("drag", ctrlMode === "drag");
+    body.classList.toggle("pads", ctrlMode === "pads");
+  }
+  if(ctrlBtn) ctrlBtn.textContent = ctrlMode === "drag" ? "DRAG" : "PADS";
+  try{ localStorage.setItem("bus4k_ctrl", ctrlMode); }catch(e){}
+}
+
+// The one-time coaching line. S11 asks for a commit threshold, not a manual, so
+// this says the two things that are not guessable and then gets out of the way.
+function routeHint(){
+  if(ctrlMode !== "drag" || !touchOn) return;
+  let seen = 0;
+  try{ seen = parseInt(localStorage.getItem("bus4k_seen"),10) || 0; }catch(e){}
+  if(seen < 3){
+    say("DRAG LEFT: STEER  \u00b7  DRAG RIGHT: SPEED", 'h', 3.4);
+    G.hint2 = 3.6;
+    try{ localStorage.setItem("bus4k_seen", ""+(seen+1)); }catch(e){}
+  } else {
+    say("TWO-FINGER TAP  \u00b7  HOLD ON", 'w', 3.0);
+  }
+}
+
 const KEYMAP = {ArrowLeft:"left",ArrowRight:"right",ArrowUp:"up",ArrowDown:"down",
                 a:"left",d:"right",w:"up",s:"down",A:"left",D:"right",W:"up",S:"down"};
 window.addEventListener("keydown",e=>{
@@ -2807,12 +3047,10 @@ window.addEventListener("keyup",e=>{
 
 // The chrome fades out of the way once you are actually driving, and comes
 // back the moment you reach for it.
-const varsEl = document.getElementById("variants");
 let idleT = 0;
 function wake(){
   idleT = 0;
   if(topbarEl && topbarEl.classList) topbarEl.classList.remove("dim");
-  if(varsEl && varsEl.classList) varsEl.classList.remove("dim");
 }
 window.addEventListener("pointermove", wake);
 window.addEventListener("pointerdown", wake);
@@ -2869,7 +3107,34 @@ function refreshGhost(){
 if(ghostBtn) ghostBtn.addEventListener("click",()=>{ showGhost=!showGhost; refreshGhost(); });
 refreshGhost();
 const resetBtn = document.getElementById("resetBtn");
-if(resetBtn) resetBtn.addEventListener("click",()=>restart());
+if(resetBtn) resetBtn.addEventListener("click",()=>{ closeSet(); restart(); });
+const fullBtn = document.getElementById("fullBtn");
+if(fullBtn) fullBtn.addEventListener("click",()=>toggleFull());
+if(ctrlBtn) ctrlBtn.addEventListener("click",()=>setCtrl(ctrlMode === "drag" ? "pads" : "drag"));
+
+// ---------- settings sheet ----------
+// Opening it pauses: the clock is the only thing that can end a run, so it must
+// not tick while someone is reading a menu.
+const setEl = document.getElementById("settings");
+let paused = false;
+function setPaused(p){
+  paused = !!p;
+  if(paused){ input.left = input.right = input.up = input.down = false; input.axis = 0; }
+}
+function openSet(){ if(setEl) setEl.hidden = false; PTR.clear(); tapReset(); applyPads(); setPaused(true); }
+function closeSet(){ if(setEl) setEl.hidden = true; setPaused(false); }
+function toggleSet(){ if(setEl && setEl.hidden) openSet(); else closeSet(); }
+const gearBtn = document.getElementById("gear");
+if(gearBtn) gearBtn.addEventListener("click",()=>{ audioInit(); toggleSet(); });
+const closeBtn = document.getElementById("closeBtn");
+if(closeBtn) closeBtn.addEventListener("click",()=>closeSet());
+if(setEl) setEl.addEventListener("pointerdown", e=>{ if(e.target === setEl) closeSet(); });
+
+{
+  let m = null;
+  try{ m = localStorage.getItem("bus4k_ctrl"); }catch(e){}
+  setCtrl(m === "pads" ? "pads" : "drag");
+}
 
 document.addEventListener("touchmove",e=>e.preventDefault(),{passive:false});
 document.addEventListener("gesturestart",e=>e.preventDefault());
@@ -2894,20 +3159,27 @@ resetAll();
 buildWaiters();
 
 const STEP = 1000/60; let acc = 0, last = performance.now();
-function frame(now){
-  const raw = now - last;
-  acc += raw; last = now; if(acc > 200) acc = 200;
+// The fixed-step body, split out so the harness can drive the real loop --
+// including the settings pause -- rather than a reimplementation of it.
+function stepSim(raw){
+  acc += raw; if(acc > 200) acc = 200;
+  if(paused){ acc = 0; return; }
   while(acc >= STEP){
     // Off the play screen the bus takes no orders; it just coasts to a stop.
-    if(G.state !== "play"){ input.left = input.right = input.up = input.down = false; }
+    if(G.state !== "play"){ input.left = input.right = input.up = input.down = false; input.axis = 0; }
+    touchTick();
     update();
     gameTick();
     acc -= STEP;
   }
+}
+function frame(now){
+  const raw = now - last;
+  last = now;
+  stepSim(raw);
   idleT += raw/1000;
   if(idleT > 3.5 && Math.abs(bus.v) > 1.5){
     if(topbarEl && topbarEl.classList) topbarEl.classList.add("dim");
-    if(varsEl && varsEl.classList) varsEl.classList.add("dim");
   }
   render(Math.min(0.1, raw/1000));
   requestAnimationFrame(frame);
@@ -2935,6 +3207,14 @@ if(typeof window!=="undefined" && window.__busHook){
     gameTick, nextStop, stopPost, stopDoorQ, dockAt, buildWaiters,
     // Physics + game together, which is what the real loop runs.
     play:n=>{ for(let i=0;i<(n||60);i++){ update(); gameTick(); } },
+    // The whole loop including the touch layer, for the gesture tests.
+    drive:n=>{ for(let i=0;i<(n||60);i++){ touchTick(); update(); gameTick(); } },
+    touch:{ down:tDown, move:tMove, up:tUp, cancel:tCancel, tick:touchTick,
+            ptrs:()=>PTR.size, pads:()=>({steer:steerPad, speed:speedPad}),
+            tuning:{STEER_TRAVEL,STEER_DEAD,SPEED_TRAVEL,SPEED_DEAD,CRUISE,
+                    TAP_SLOP,TAP_PAIR,TAP_HOLD} },
+    setCtrl, ctrl:()=>ctrlMode, loopStep:stepSim,
+    setPaused, isPaused:()=>paused, openSet, closeSet, frontEndTap,
     viewport:()=>({VW,VH,W,H,DPR,PPM,PPM_BASE,rot90,zoom:ZOOMS[zoomStep]}),
     setZoomStep:i=>{ zoomStep=i; resize(); },
     resize,

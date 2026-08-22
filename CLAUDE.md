@@ -19,7 +19,7 @@ play well on phones (touch controls, responsive, scroll/zoom suppressed).
 | `bus-bendy.html`, `bus-chase.html`, `bus-shift.html` | Design variants of it: articulated bus / rotating camera / clock + stops. |
 | `bus-4k.html` | **ONE STREET HD** — the actual game. RIGID's driving model, a full-screen renderer, and two complete routes with stops, a manifest, a clock and a comfort multiplier. |
 | `docs/bus-game-research.md` | Research behind the bus game. |
-| `tools/` | Headless harness, physics-parity check, screenshot tool. |
+| `tools/` | Headless harness, physics-parity check, screenshot tool, browser touch test. |
 | `.github/workflows/deploy-pages.yml` | Deploys the repo root to GitHub Pages. |
 | `README.md` | Player-facing readme (controls, deploy notes). |
 
@@ -154,7 +154,9 @@ section 17 records which of them the HD build has now answered in code.
 - `bus-4k.html` and `bus.html` must stay the same **driving model**. After any
   edit near the simulation block, run `node tools/parity-bus.js` and require
   exactly zero drift. The game layer is allowed to exist, but only outside
-  `update()` — see below.
+  `update()` — see below. The sim block is a **verbatim copy**, so a change to
+  it goes into *both* files identically, even when only one of them needs it —
+  that is how `input.axis` was added.
 
 ## bus.html / bus-4k.html architecture
 
@@ -182,9 +184,13 @@ gate-test street node for node, which is what keeps the parity claim true.
   shift the shared stream the oncoming car draws its personality from. The one
   place the game writes back into the driving model is `payloadStep()`, and
   with an empty bus that correction is exactly zero.
-- All render-only state (particles, skid marks, eased zoom) lives in
-  `render(rdt)` and is driven by the frame delta, never by `update()`. Keep it
-  that way — the harness asserts that 400 `render()` calls move nothing.
+- All render-only state (particles, skid marks, eased zoom, the touch-pad glow)
+  lives in `render(rdt)` and is driven by the frame delta, never by `update()`.
+  Keep it that way — the harness asserts that 400 `render()` calls move nothing.
+- **Steering has an analogue channel.** `input.axis` (a float in ±1) is summed
+  with the `left`/`right` booleans and clamped, so a touch drag can hold a
+  partial lock. It defaults to 0, which is exactly why the edit was provably
+  inert: the parity harness only ever sets the booleans.
 - Resolution is viewport-driven: `VW/VH` are CSS pixels, `PPM` is chosen so
   every screen sees the same *world* framing (`VIEW_X_M` × `VIEW_Y_M`) and only
   the resolution changes. On a portrait phone (`VH > VW*1.12`) the world is
@@ -227,11 +233,43 @@ to `docs/bus-game-research.md`.
 - New colour keys added here: `z` `S` (waiting passengers), `W` (stop sign),
   `E` `Y` (the skip). As always they must be in **both** `KEY_TONE` and `GBC`.
 
+## bus-4k.html — the touch layer
+
+Everything under the `Touch` banner, between the audio block and the keyboard
+bindings. It follows research §11, and it is the only input path that is not
+just booleans.
+
+- **Two relative drag areas**, `#zoneL` / `#zoneR`, shown only under
+  `body.touch.drag`. The left one writes the analogue `input.axis` relative to
+  where the thumb landed (never an absolute wheel); the right one is a
+  three-band speed pad. `STEER_TRAVEL` / `SPEED_TRAVEL` are the CSS-pixel
+  throws, `STEER_DEAD` snaps to **exactly** 0 so `update()`'s fast self-centring
+  rate takes over on release.
+- **Auto-throttle.** The speed pad's null band holds `CRUISE` (9 m/s) by setting
+  the same `input.up`/`down` booleans a thumb would, so the driving model never
+  sees anything new. Suppressed while the doors are open, and off entirely under
+  the D-pad scheme.
+- **`touchTick()` runs from `stepSim()` immediately before `update()`**, the
+  mirror of `gameTick()` running immediately after. Nothing touch-related is
+  inside `update()`, which is what keeps parity true.
+- **HOLD ON is a two-finger tap.** A tap only registers if both fingers land
+  within `TAP_PAIR` of an *empty* screen and lift within `TAP_HOLD` having moved
+  less than `TAP_SLOP` — that last rule is §11's commit threshold and is what
+  stops the ordinary two-thumb driving posture from firing it. There is a
+  regression test for exactly that; do not loosen it.
+- **Chrome is horn + `☰ MENU`.** Everything else lives in `#settings`, which
+  pauses via `setPaused()`. `CONTROLS` there switches DRAG ↔ PADS
+  (`localStorage.bus4k_ctrl`); the old D-pad is still in the markup and is the
+  fallback scheme §11 asks for.
+- The pad indicators draw from `drawPads(rdt)` in raw `rgba()`, deliberately not
+  through `col()`, so they add **no colour keys** to keep the `KEY_TONE`/`GBC`
+  mirror exact.
+
 ## Verifying changes
 
 `node tools/test-bus.js <file>` runs the shared harness (sections 1–9) plus a
 variant section chosen from `consts.VARIANT`. For `bus-4k` that adds sections
-10–17, which cover the HD renderer *and* the shift: the geometry audit per
+10–18, which cover the HD renderer, the shift *and* the touch layer: the geometry audit per
 route, a scripted driver that completes both routes, the mass/comfort/doors/
 damage rules, the front-end state machine, and a magenta sweep over every
 screen in every palette. It stubs document/canvas/
@@ -239,12 +277,20 @@ localStorage/rAF and drives the loop through `window.__busHook`. A `fillStyle`
 /`strokeStyle` setter flags `#ff00ff`, catching any colour key missing from
 `KEY_TONE`/`GBC`; `bus-4k` also asserts the two maps are exact mirrors.
 
+`node tools/touch-bus.js` drives the touch layer in a **real browser with real
+`PointerEvent`s**, which section 18 cannot: it calls the gesture module
+directly and so never exercises `bindZone`, the gear button or the settings
+sheet. Run both after any input change. `requestAnimationFrame` does not fire
+in headless Chromium, so it steps the loop through `H.loopStep()`.
+
 **A real browser IS available** in Claude Code on the web: Chromium lives at
 `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`. Use
 `node tools/shot-bus.js <game.html> <out.png> 1280x720 s=126 q=1.4 v=6.5` to
 screenshot any point on the street, then read the PNG. For `bus-4k` it also
-takes `lvl`, `state`, `stop`, `riders`, `board` and `win`, so any screen of the
-shift can be framed. To inspect fine detail, copy the file to a temp dir with
+takes `lvl`, `state`, `stop`, `riders`, `board`, `win`, `pad=<steer>,<speed>`
+(plants two thumbs so the drag indicators are on screen, and renders as a phone
+would) and `menu=1` (opens the settings sheet), so any screen of the shift can
+be framed. To inspect fine detail, copy the file to a temp dir with
 `VIEW_X_M`/`VIEW_Y_M` reduced — the framing is world-fixed, so that is the only
 way to magnify. Two gotchas: headless
 clamps the window to a **500 px minimum width** (so a 390 px phone must be
